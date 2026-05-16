@@ -30,6 +30,9 @@ fun SoundLibraryContent(
     val isRecording by SoundManager.isRecording.collectAsState()
     val playingSoundPath by SoundManager.currentSoundPath.collectAsState()
     
+    var showNameDialog by remember { mutableStateOf<String?>(null) }
+    var tempName by remember { mutableStateOf("") }
+    
     var customSounds by remember { mutableStateOf(SoundManager.getCustomSounds(context)) }
 
     val mp3Launcher = rememberLauncherForActivityResult(
@@ -74,7 +77,11 @@ fun SoundLibraryContent(
                         .size(80.dp)
                         .clickable {
                             if (isRecording) {
-                                SoundManager.stopRecording(context)
+                                val path = SoundManager.stopRecording(context)
+                                if (path != null) {
+                                    showNameDialog = path
+                                    tempName = "Mi grabación ${System.currentTimeMillis() % 10000}"
+                                }
                                 customSounds = SoundManager.getCustomSounds(context)
                             } else {
                                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -130,13 +137,13 @@ fun SoundLibraryContent(
             )
         } else {
             customSounds.forEach { path ->
-                val fileName = path.substringAfterLast("/").substringBeforeLast(".")
-                val displayTitle = if (fileName.startsWith("recording_")) "Mi grabación" else fileName
+                val displayTitle = SoundManager.getDisplayName(context, path)
+                val isRecordingFile = path.substringAfterLast("/").startsWith("recording_")
                 
                 SoundItemCard(
                     title = displayTitle,
-                    subtitle = if (fileName.startsWith("recording_")) "Grabación de voz" else "Audio importado",
-                    icon = if (fileName.startsWith("recording_")) Icons.Default.Mic else Icons.Default.MusicNote,
+                    subtitle = if (isRecordingFile) "Grabación de voz" else "Audio importado",
+                    icon = if (isRecordingFile) Icons.Default.Mic else Icons.Default.MusicNote,
                     isPlaying = playingSoundPath == path,
                     onPlay = { SoundManager.playSound(context, path) },
                     onDelete = {
@@ -170,6 +177,33 @@ fun SoundLibraryContent(
         }
         
         Spacer(modifier = Modifier.height(32.dp))
+    }
+
+    if (showNameDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = null },
+            title = { Text("Nombre del audio") },
+            text = {
+                OutlinedTextField(
+                    value = tempName,
+                    onValueChange = { tempName = it },
+                    label = { Text("Título") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showNameDialog?.let { path ->
+                        SoundManager.setDisplayName(context, path, tempName)
+                        customSounds = SoundManager.getCustomSounds(context)
+                    }
+                    showNameDialog = null
+                }) {
+                    Text("Guardar")
+                }
+            }
+        )
     }
 }
 

@@ -7,35 +7,49 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 
 object NotificationHelper {
-    private const val CHANNEL_ID = "reminder_channel_v2" // Changed ID to force update
+    private const val BASE_CHANNEL_ID = "reminder_channel_"
+
+    fun getChannelIdForSound(context: Context, soundPath: String, enableVibration: Boolean = true): String {
+        // Clean sound name for ID (no special characters, just alphanumeric and underscores)
+        val cleanName = soundPath.replace(Regex("[^A-Za-z0-9_]"), "_")
+        val vibSuffix = if (enableVibration) "" else "_novib"
+        val channelId = BASE_CHANNEL_ID + cleanName + vibSuffix
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // Check if channel already exists
+            if (notificationManager.getNotificationChannel(channelId) == null) {
+                val soundUri = SoundManager.getNotificationSoundUri(context, soundPath)
+                val vibText = if (enableVibration) "" else " (Sin vibración)"
+                val name = "Recordatorios$vibText ($soundPath)"
+                val importance = NotificationManager.IMPORTANCE_HIGH
+                
+                val channel = NotificationChannel(channelId, name, importance).apply {
+                    description = "Notificaciones con sonido $soundPath"
+                    this.enableVibration(enableVibration)
+                    if (enableVibration) {
+                        vibrationPattern = longArrayOf(0, 800, 400, 800, 400, 800, 400, 800, 400, 800)
+                    } else {
+                        vibrationPattern = null
+                    }
+                    setSound(soundUri, null)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+        }
+        return channelId
+    }
 
     fun createNotificationChannel(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Recordatorios"
-            val descriptionText = "Canal para notificaciones de recordatorios"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 800, 400, 800, 400, 800, 400, 800, 400, 800)
-                // Set sound to default to ensure it triggers properly
-                setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null)
-            }
-            val notificationManager: NotificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            
-            // Delete old channel if it exists to clean up
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                notificationManager.deleteNotificationChannel("reminder_channel")
-            }
-            
-            notificationManager.createNotificationChannel(channel)
-        }
+        // This is still useful for a default channel
+        getChannelIdForSound(context, "Campana")
     }
 
     fun showTestNotification(context: Context) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val channelId = getChannelIdForSound(context, "Campana")
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Prueba de Notificación")
             .setContentText("Si ves esto, las notificaciones están funcionando.")

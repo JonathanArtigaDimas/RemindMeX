@@ -21,10 +21,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.animation.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.remindme.ui.components.*
 import com.example.remindme.ui.theme.RemindMeTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -92,6 +99,16 @@ class MainActivity : ComponentActivity() {
 
                 val reminders by reminderDao.getAllReminders().collectAsState(initial = emptyList())
                 
+                var reminderToDelete by remember { mutableStateOf<Reminder?>(null) }
+                var toastMessage by remember { mutableStateOf<String?>(null) }
+                
+                LaunchedEffect(toastMessage) {
+                    if (toastMessage != null) {
+                        delay(3000)
+                        toastMessage = null
+                    }
+                }
+
                 val categorizedReminders = remember(reminders) {
                     val now = Calendar.getInstance()
                     val todayStr = reminderDateFormat.format(now.time)
@@ -272,10 +289,7 @@ class MainActivity : ComponentActivity() {
                                                                     showReminderModal.value = true
                                                                 },
                                                                 onDelete = { 
-                                                                    ReminderScheduler.cancelReminder(this@MainActivity, r.id)
-                                                                    lifecycleScope.launch {
-                                                                        reminderDao.delete(r)
-                                                                    }
+                                                                    reminderToDelete = r
                                                                 }
                                                             )
                                                         }
@@ -330,19 +344,56 @@ class MainActivity : ComponentActivity() {
                     if (showReminderModal.value) {
                         ReminderEditorOverlay(
                             editingReminder = editingReminder.value,
+                            settingsManager = settingsManager,
                             onDismiss = { showReminderModal.value = false },
                             onSave = { r ->
                                 lifecycleScope.launch {
+                                    val time = r.dateTime.split(" ")[1]
+                                    val formattedTime = try {
+                                        val sdf24 = SimpleDateFormat("HH:mm", Locale.getDefault())
+                                        val sdf12 = SimpleDateFormat("h:mm a", Locale.getDefault())
+                                        sdf12.format(sdf24.parse(time)!!)
+                                    } catch (e: Exception) { time }
+
                                     if (r.id != 0) {
                                         reminderDao.update(r)
+                                        toastMessage = "Recordatorio actualizado para las $formattedTime"
                                     } else {
                                         val newId = reminderDao.insert(r).toInt()
                                         val date = r.dateTime.split(" ")[0]
-                                        val time = r.dateTime.split(" ")[1]
                                         ReminderScheduler.scheduleReminder(this@MainActivity, newId, r.title, date, time, r.repetition ?: "Sin repetición", r.repeatDays)
+                                        toastMessage = "Recordatorio creado para las $formattedTime"
                                     }
                                 }
                                 showReminderModal.value = false
+                            }
+                        )
+                    }
+
+                    if (reminderToDelete != null) {
+                        AlertDialog(
+                            onDismissRequest = { reminderToDelete = null },
+                            title = { Text("Eliminar recordatorio") },
+                            text = { Text("¿Estás seguro de que deseas eliminar este recordatorio? No podrás recuperarlo.") },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        reminderToDelete?.let { r ->
+                                            ReminderScheduler.cancelReminder(this@MainActivity, r.id)
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                reminderDao.delete(r)
+                                            }
+                                        }
+                                        reminderToDelete = null
+                                    }
+                                ) {
+                                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { reminderToDelete = null }) {
+                                    Text("Cancelar")
+                                }
                             }
                         )
                     }
@@ -418,12 +469,70 @@ class MainActivity : ComponentActivity() {
                                 showCalendarReminderDialog.value = false
                             },
                             onDeleteReminder = { r ->
-                                ReminderScheduler.cancelReminder(this@MainActivity, r.id)
-                                lifecycleScope.launch {
-                                    reminderDao.delete(r)
-                                }
+                                reminderToDelete = r
                             }
                         )
+                    }
+
+                    // Custom Toast matching user image
+                    AnimatedVisibility(
+                        visible = toastMessage != null,
+                        enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
+                        exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 100.dp)
+                    ) {
+                        toastMessage?.let { msg ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.9f)
+                                    .padding(horizontal = 16.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = Color(0xFF2C2C2E).copy(alpha = 0.95f),
+                                tonalElevation = 8.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // App Icon Container
+                                    Surface(
+                                        modifier = Modifier.size(42.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.White.copy(alpha = 0.1f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
+                                    }
+                                    
+                                    Spacer(Modifier.width(16.dp))
+                                    
+                                    Column {
+                                        val parts = msg.split(" para las ")
+                                        Text(
+                                            text = if (parts.size > 1) parts[0] + " para las" else msg,
+                                            color = Color.White,
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Normal
+                                        )
+                                        if (parts.size > 1) {
+                                            Text(
+                                                text = parts[1],
+                                                color = Color.White,
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -446,6 +555,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ReminderEditorOverlay(
     editingReminder: Reminder?,
+    settingsManager: SettingsManager,
     onDismiss: () -> Unit,
     onSave: (Reminder) -> Unit
 ) {
@@ -455,6 +565,8 @@ fun ReminderEditorOverlay(
 
     val initialDate = editingReminder?.dateTime?.split(" ")?.getOrNull(0) ?: defaultDate
     val initialTime = editingReminder?.dateTime?.split(" ")?.getOrNull(1) ?: defaultTime
+    
+    val defaultSound by settingsManager.defaultNotificationSound.collectAsState()
 
     NewReminderModal(
         initialTitle = editingReminder?.title ?: "",
@@ -463,7 +575,7 @@ fun ReminderEditorOverlay(
         initialTime = initialTime,
         initialCategory = editingReminder?.category ?: "Personal",
         initialColor = editingReminder?.color ?: 0xFF3B82F6,
-        initialSound = editingReminder?.sound ?: "Campana",
+        initialSound = editingReminder?.sound ?: defaultSound,
         initialRepetition = editingReminder?.repetition ?: "Sin repetición",
         initialRepeatDays = editingReminder?.repeatDays,
         onDismiss = onDismiss,

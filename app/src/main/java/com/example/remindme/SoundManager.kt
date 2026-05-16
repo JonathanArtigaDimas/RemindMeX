@@ -23,6 +23,17 @@ object SoundManager {
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
+    fun getDisplayName(context: Context, soundPath: String): String {
+        if (!soundPath.startsWith("/")) return soundPath
+        val prefs = context.getSharedPreferences("sounds", Context.MODE_PRIVATE)
+        return prefs.getString("name_$soundPath", null) ?: soundPath.substringAfterLast("/").substringBeforeLast(".")
+    }
+
+    fun setDisplayName(context: Context, soundPath: String, name: String) {
+        val prefs = context.getSharedPreferences("sounds", Context.MODE_PRIVATE)
+        prefs.edit().putString("name_$soundPath", name).apply()
+    }
+
     fun playSound(context: Context, soundPath: String, loop: Boolean = false) {
         if (_currentSoundPath.value == soundPath && mediaPlayer?.isPlaying == true) {
             stopSound()
@@ -126,7 +137,10 @@ object SoundManager {
                 val prefs = context.getSharedPreferences("sounds", Context.MODE_PRIVATE)
                 val sounds = prefs.getStringSet("custom_sounds", emptySet())?.toMutableSet() ?: mutableSetOf()
                 sounds.remove(soundPath)
-                prefs.edit().putStringSet("custom_sounds", sounds).apply()
+                prefs.edit()
+                    .putStringSet("custom_sounds", sounds)
+                    .remove("name_$soundPath")
+                    .apply()
             }
         } catch (e: Exception) {
             Log.e("SoundManager", "Error al eliminar sonido: ${e.message}")
@@ -138,18 +152,23 @@ object SoundManager {
     }
 
     fun getSoundResourceId(context: Context, soundName: String): Int {
-        // --- ACA DEBES AGREGAR LOS SONIDOS ---
-        // Debes copiar tus archivos MP3 o WAV en la carpeta:
-        // app/src/main/res/raw/
-        // Y nombrarlos exactamente como se indica abajo (en minúsculas):
+        // =========================================================================================
+        // INSTRUCCIONES PARA AGREGAR SONIDOS MANUALMENTE:
+        // 1. Ve a la carpeta: app/src/main/res/raw/ (Si no existe, créala)
+        // 2. Pega tu archivo de audio (ejemplo: "misonido.mp3")
+        // 3. El nombre del archivo debe estar en MINÚSCULAS y no tener espacios.
+        // 4. Agrega una línea en el 'when' de abajo mapeando el nombre visual con el nombre del archivo.
+        // =========================================================================================
         
         val resName = when (soundName) {
-            "Clásico" -> "clasico"    // Requiere clasico.mp3 o clasico.wav
-            "Melodía" -> "melodia"    // Requiere melodia.mp3 o melodia.wav
-            "Aviso"   -> "aviso"      // Requiere aviso.mp3 o aviso.wav
-            "Trompeta" -> "trompeta"  // Requiere trompeta.mp3 o trompeta.wav
-            "Campana" -> "campana"    // Requiere campana.mp3 o campana.wav
-            "Cristal" -> "cristal"    // Requiere cristal.mp3 o cristal.wav
+            "Clásico" -> "clasico"
+            "Digitalic" -> "digitalic"
+            "Cristales" -> "cristales"
+            "Univerfield" -> "univerfield"
+            "Melodic" -> "melodic"
+            "Aviso"   -> "aviso"
+            "Campana" -> "campana"
+            "Cristal" -> "cristal"
             else -> return 0
         }
         return context.resources.getIdentifier(resName, "raw", context.packageName)

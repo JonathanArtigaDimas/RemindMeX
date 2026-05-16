@@ -14,7 +14,7 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val title = intent.getStringExtra("title") ?: "Recordatorio"
         val id = intent.getIntExtra("id", 0)
-        val type = intent.getIntExtra("notification_type", 0) // 0: principal, 1: 1 hora, 2: 10 min
+        val type = intent.getIntExtra("notification_type", 0) // 0: principal, 1: 1 hora, 2: 10 min, 3: 30 min
 
         if (type == 0) {
             handleMainReminder(context, id, title)
@@ -56,18 +56,22 @@ class AlarmReceiver : BroadcastReceiver() {
             }
             context.startActivity(alertIntent)
 
-            showNotification(context, id, title, description, sound)
+            showNotification(context, id, title, description, sound, color)
         }
     }
 
     private fun showPreNotification(context: Context, id: Int, title: String, type: Int) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        val contentTitle = if (type == 1) "Falta 1 hora" else "Faltan 10 minutos"
-        val contentText = if (type == 1) {
-            "Falta 1 hora para tu recordatorio: $title"
-        } else {
-            "Faltan 10 minutos para tu recordatorio: $title"
+        val contentTitle = when (type) {
+            1 -> "Falta 1 hora"
+            3 -> "Faltan 30 minutos"
+            else -> "Faltan 10 minutos"
+        }
+        val contentText = when (type) {
+            1 -> "Falta 1 hora para tu recordatorio: $title"
+            3 -> "Faltan 30 minutos para tu recordatorio: $title"
+            else -> "Faltan 10 minutos para tu recordatorio: $title"
         }
 
         val contentIntent = Intent(context, MainActivity::class.java).apply {
@@ -75,11 +79,17 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         val contentPendingIntent = PendingIntent.getActivity(context, id + (type * 1000000), contentIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val notification = NotificationCompat.Builder(context, "reminder_channel_v2")
+        val settingsManager = SettingsManager.getInstance(context)
+        val defaultSound = settingsManager.defaultNotificationSound.value
+        // Usar canal SIN vibración para las pre-notificaciones
+        val channelId = NotificationHelper.getChannelIdForSound(context, defaultSound, enableVibration = false)
+
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVibrate(null) // Asegurar que no vibre en la notificación individual
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
             .build()
@@ -87,26 +97,38 @@ class AlarmReceiver : BroadcastReceiver() {
         notificationManager.notify(id + (type * 1000000), notification)
     }
 
-    private fun showNotification(context: Context, id: Int, title: String, description: String, soundPath: String) {
+    private fun showNotification(context: Context, id: Int, title: String, description: String, soundPath: String, color: Long) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        val contentIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        val contentIntent = Intent(context, ReminderAlertActivity::class.java).apply {
+            putExtra("id", id)
+            putExtra("title", title)
+            putExtra("description", description)
+            putExtra("color", color)
+            putExtra("sound", soundPath)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val contentPendingIntent = PendingIntent.getActivity(context, id, contentIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val snoozeIntent = Intent(context, ReminderActionReceiver::class.java).apply {
-            action = "SNOOZE"
+            action = ReminderActionReceiver.ACTION_SNOOZE
             putExtra("id", id)
             putExtra("title", title)
         }
         val snoozePendingIntent = PendingIntent.getBroadcast(context, id + 1000, snoozeIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        val doneIntent = Intent(context, ReminderActionReceiver::class.java).apply {
+            action = ReminderActionReceiver.ACTION_COMPLETE
+            putExtra("id", id)
+        }
+        val donePendingIntent = PendingIntent.getBroadcast(context, id + 2000, doneIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         val vibrationPattern = longArrayOf(0, 800, 400, 800, 400, 800, 400, 800, 400, 800)
         
         val soundUri = SoundManager.getNotificationSoundUri(context, soundPath)
+        val channelId = NotificationHelper.getChannelIdForSound(context, soundPath)
 
-        val notification = NotificationCompat.Builder(context, "reminder_channel_v2")
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("¡Ya es hora!")
             .setContentText("Ya es hora de: $title")
@@ -114,10 +136,11 @@ class AlarmReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setSound(soundUri) 
             .setVibrate(vibrationPattern)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
+            .setOngoing(true)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_edit, "Posponer 10 min", snoozePendingIntent)
-            .addAction(android.R.drawable.ic_menu_view, "Hecho", contentPendingIntent)
+            .addAction(android.R.drawable.ic_menu_view, "Hecho", donePendingIntent)
             .build()
 
         notificationManager.notify(id, notification)

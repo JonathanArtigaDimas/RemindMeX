@@ -1,11 +1,11 @@
 package com.example.remindme
 
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.WindowManager
@@ -37,20 +37,47 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class ReminderAlertActivity : ComponentActivity() {
-    private var vibrator: Vibrator? = null
+    private val dismissReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == ReminderActionReceiver.ACTION_DISMISS_ALARM) {
+                VibrationManager.stopVibration(this@ReminderAlertActivity)
+                SoundManager.stopSound()
+                finish()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        handleIntent(intent)
+
+        val filter = android.content.IntentFilter(ReminderActionReceiver.ACTION_DISMISS_ALARM)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(dismissReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(dismissReceiver, filter)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent) {
         val id = intent.getIntExtra("id", -1)
         val title = intent.getStringExtra("title") ?: "Recordatorio"
         val description = intent.getStringExtra("description") ?: ""
         val colorLong = intent.getLongExtra("color", 0xFF3B82F6)
         val sound = intent.getStringExtra("sound") ?: "Campana"
 
-        // Reproducir el sonido seleccionado como una alarma (ignora modo silencio)
-        SoundManager.playSound(this, sound, loop = true)
-        startContinuousVibration()
+        // Reiniciar sonido y vibración si es una nueva alarma o re-entrada
+        SoundManager.stopSound()
+        SoundManager.playSound(this, sound, loop = false) // Quitado el loop para que suene una vez
+        VibrationManager.stopVibration(this)
+        VibrationManager.startVibration(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -75,7 +102,7 @@ class ReminderAlertActivity : ComponentActivity() {
                         description = description,
                         themeColor = Color(colorLong),
                         onComplete = {
-                            stopVibration()
+                            VibrationManager.stopVibration(this)
                             SoundManager.stopSound()
                             completeReminder(id)
                             val mainIntent = Intent(this, MainActivity::class.java).apply {
@@ -85,7 +112,7 @@ class ReminderAlertActivity : ComponentActivity() {
                             finish()
                         },
                         onSnooze = {
-                            stopVibration()
+                            VibrationManager.stopVibration(this)
                             SoundManager.stopSound()
                             snoozeReminder(id, title)
                             finish()
@@ -98,31 +125,13 @@ class ReminderAlertActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopVibration()
+        try {
+            unregisterReceiver(dismissReceiver)
+        } catch (_: Exception) {
+            // Ignorar si no estaba registrado
+        }
+        VibrationManager.stopVibration(this)
         SoundManager.stopSound()
-    }
-
-    private fun startContinuousVibration() {
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-
-        val pattern = longArrayOf(0, 1000, 500, 1000) // Espera 0ms, vibra 1s, espera 500ms, vibra 1s
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0)) // 0 significa repetir desde el inicio
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, 0)
-        }
-    }
-
-    private fun stopVibration() {
-        vibrator?.cancel()
-        vibrator = null
     }
 
     private fun completeReminder(id: Int) {

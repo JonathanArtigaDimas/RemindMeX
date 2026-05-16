@@ -321,9 +321,13 @@ fun SettingsScreen(
                                         Column {
                                             val sounds = listOf(
                                                 Triple("Clásico", "🔔", "Tono de campana tradicional"),
-                                                Triple("Melodía", "🎵", "Sonido suave y armónico"),
+                                                Triple("Digitalic", "👾", "Sonido digital moderno"),
+                                                Triple("Cristales", "💎", "Brillo de cristales"),
+                                                Triple("Univerfield", "🌌", "Ambiente espacial"),
+                                                Triple("Melodic", "🎵", "Melodía suave"),
                                                 Triple("Aviso", "✨", "Notificación corta y brillante"),
-                                                Triple("Trompeta", "🎺", "Aviso enérgico y claro")
+                                                Triple("Campana", "🛎️", "Sonido de campana clásica"),
+                                                Triple("Cristal", "💎", "Toque de cristal fino")
                                             )
                                             
                                             sounds.forEachIndexed { index, (name, emoji, desc) ->
@@ -331,15 +335,13 @@ fun SettingsScreen(
                                                     name = name,
                                                     emoji = emoji,
                                                     description = desc,
-                                                    isSelected = defaultSound == name || (name == "Clásico" && defaultSound == "Campana"),
-                                                    isPlaying = playingSoundPath == name || (name == "Clásico" && playingSoundPath == "Campana"),
+                                                    isSelected = defaultSound == name,
+                                                    isPlaying = playingSoundPath == name,
                                                     onPlay = { 
-                                                        val soundToPlay = if (name == "Clásico") "Campana" else name
-                                                        SoundManager.playSound(context, soundToPlay) 
+                                                        SoundManager.playSound(context, name) 
                                                     },
                                                     onClick = { 
-                                                        val soundToSet = if (name == "Clásico") "Campana" else name
-                                                        settingsManager.setDefaultNotificationSound(soundToSet) 
+                                                        settingsManager.setDefaultNotificationSound(name)
                                                     }
                                                 )
                                                 if (index < sounds.size - 1) {
@@ -483,7 +485,7 @@ fun SettingsScreen(
                 
                 // Version Footer pushed to bottom
                 Text(
-                    text = "RemindMe v1.0.3",
+                    text = "RemindMe v1.0.4",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp),
@@ -491,6 +493,7 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.bodySmall
                 )
+                Spacer(Modifier.height(20.dp))
 
                 Text(
                     text = buildAnnotatedString {
@@ -754,6 +757,14 @@ fun NotificationSoundRow(
             )
         }
         
+        IconButton(onClick = onPlay) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Detener" else "Reproducir",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
         if (isSelected) {
             Icon(
                 Icons.Default.Check, 

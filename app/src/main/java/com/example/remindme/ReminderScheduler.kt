@@ -45,14 +45,20 @@ object ReminderScheduler {
                     // 2. Lógica de notificaciones previas escalonadas
                     val now = System.currentTimeMillis()
                     val oneHourMillis = 60 * 60 * 1000L
+                    val thirtyMinutesMillis = 30 * 60 * 1000L
                     val tenMinutesMillis = 10 * 60 * 1000L
 
-                    // Caso General: Falta más de 1 hora
+                    // Falta más de 1 hora
                     if (triggerTime - now > oneHourMillis) {
                         scheduleSingleAlarm(context, id, title, triggerTime - oneHourMillis, 1) // 1 hora antes
                     }
 
-                    // Caso Condicional: Falta más de 10 minutos
+                    // Falta más de 30 minutos
+                    if (triggerTime - now > thirtyMinutesMillis) {
+                        scheduleSingleAlarm(context, id, title, triggerTime - thirtyMinutesMillis, 3) // 30 min antes
+                    }
+
+                    // Falta más de 10 minutos
                     if (triggerTime - now > tenMinutesMillis) {
                         scheduleSingleAlarm(context, id, title, triggerTime - tenMinutesMillis, 2) // 10 min antes
                     }
@@ -78,6 +84,7 @@ object ReminderScheduler {
         val requestCode = when (type) {
             1 -> id + 1000000 // Offset para 1 hora
             2 -> id + 2000000 // Offset para 10 min
+            3 -> id + 3000000 // Offset para 30 min
             else -> id
         }
 
@@ -136,7 +143,7 @@ object ReminderScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
         // Cancelar tanto la principal como las pre-notificaciones
-        listOf(id, id + 1000000, id + 2000000).forEach { requestCode ->
+        listOf(id, id + 1000000, id + 2000000, id + 3000000).forEach { requestCode ->
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 `package` = context.packageName
             }

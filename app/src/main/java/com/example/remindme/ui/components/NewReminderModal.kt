@@ -1,5 +1,6 @@
 package com.example.remindme.ui.components
 
+import android.Manifest
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.remindme.SoundManager
@@ -50,6 +52,10 @@ fun NewReminderModal(
     var selectedSound by remember { mutableStateOf(initialSound) }
     var selectedRepetition by remember { mutableStateOf(initialRepetition) }
     
+    val isRecording by SoundManager.isRecording.collectAsState()
+    var showNameDialog by remember { mutableStateOf<String?>(null) }
+    var tempName by remember { mutableStateOf("") }
+
     val initialDaysList = initialRepeatDays?.split(",")?.filter { it.isNotEmpty() }?.map { it.toInt() } ?: emptyList()
     var selectedDays by remember { mutableStateOf(initialDaysList.toSet()) }
 
@@ -75,7 +81,17 @@ fun NewReminderModal(
                 selectedSound = path
                 customSounds = SoundManager.getCustomSounds(context)
                 SoundManager.playSound(context, path)
+                // Optionally ask for name for imported sounds too? 
+                // The user only asked for recorded ones, but it's good practice.
             }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            SoundManager.startRecording(context)
         }
     }
 
@@ -106,13 +122,26 @@ fun NewReminderModal(
     val timePickerState = rememberTimePickerState(
         initialHour = try { finalInitialTime.split(":")[0].toInt() } catch (e: Exception) { calendar.get(Calendar.HOUR_OF_DAY) },
         initialMinute = try { finalInitialTime.split(":")[1].toInt() } catch (e: Exception) { calendar.get(Calendar.MINUTE) },
-        is24Hour = true
+        is24Hour = false
     )
     val formattedTime = String.format(Locale.getDefault(), "%02d:%02d", timePickerState.hour, timePickerState.minute)
 
+    val displayTime = remember(timePickerState.hour, timePickerState.minute) {
+        val hour = timePickerState.hour
+        val minute = timePickerState.minute
+        val isPm = hour >= 12
+        val hour12 = when {
+            hour == 0 -> 12
+            hour > 12 -> hour - 12
+            else -> hour
+        }
+        val amPm = if (isPm) "PM" else "AM"
+        String.format(Locale.getDefault(), "%d:%02d %s", hour12, minute, amPm)
+    }
+
     val categories = listOf("Personal", "Trabajo", "Salud", "Finanzas", "Familia", "Otro")
     val colors = listOf(0xFF3B82F6, 0xFFEF4444, 0xFF10B981, 0xFFF59E0B, 0xFF8B5CF6, 0xFFEC4899, 0xFF06B6D4, 0xFF6366F1, 0xFF2DD4BF, 0xFFF97316, 0xFF84CC16, 0xFF64748B)
-    val presetSounds = listOf("Campana", "Cristal", "Clásico", "Aviso")
+    val presetSounds = listOf("Clásico", "Digitalic", "Cristales", "Univerfield", "Melodic", "Aviso", "Campana", "Cristal")
     val repetitions = listOf("Sin repetición", "Diario", "Semanal", "Mensual")
 
     BackHandler(onBack = onDismiss)
@@ -160,7 +189,7 @@ fun NewReminderModal(
             SectionHeader("FECHA Y HORA")
             Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
                 PickerField(formattedDate, Icons.Default.CalendarMonth, Modifier.weight(1f)) { showDatePicker = true }
-                PickerField(formattedTime, Icons.Default.AccessTime, Modifier.weight(1f)) { showTimePicker = true }
+                PickerField(displayTime, Icons.Default.AccessTime, Modifier.weight(1f)) { showTimePicker = true }
             }
 
             SectionHeader("CATEGORÍA")
@@ -182,14 +211,28 @@ fun NewReminderModal(
                 SoundActionCard("Importar MP3", Icons.Default.Folder, Modifier.weight(1f)) {
                     mp3Launcher.launch("audio/*")
                 }
-                SoundActionCard("Grabar", Icons.Default.Mic, Modifier.weight(1f)) {}
+                SoundActionCard(
+                    text = if (isRecording) "Detener" else "Grabar", 
+                    icon = if (isRecording) Icons.Default.Stop else Icons.Default.Mic, 
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isRecording) {
+                        val path = SoundManager.stopRecording(context)
+                        if (path != null) {
+                            showNameDialog = path
+                            tempName = "Mi grabación ${System.currentTimeMillis() % 10000}"
+                        }
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
             }
             
             // Show custom imported sounds
             customSounds.forEach { path ->
-                val fileName = path.substringAfterLast("/")
+                val displayName = SoundManager.getDisplayName(context, path)
                 SoundOptionRow(
-                    name = "Personalizado: $fileName", 
+                    name = displayName, 
                     isSelected = selectedSound == path,
                     isPlaying = playingSoundPath == path,
                     onPlay = { SoundManager.playSound(context, path) },
@@ -222,6 +265,29 @@ fun NewReminderModal(
 
             if (selectedRepetition == "Semanal") {
                 DaySelector(selectedDays) { selectedDays = it }
+            }
+
+            // Countdown Timer
+            val remainingTimeText = remember(title, formattedDate, formattedTime) {
+                calculateRemainingTime(title, formattedDate, formattedTime)
+            }
+
+            if (remainingTimeText.isNotEmpty() && isTitleValid) {
+                Spacer(Modifier.height(24.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                ) {
+                    Text(
+                        text = remainingTimeText,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
 
             Button(
@@ -258,6 +324,79 @@ fun NewReminderModal(
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Cancelar") } },
             text = { TimePicker(state = timePickerState) }
         )
+    }
+
+    if (showNameDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = null },
+            title = { Text("Nombre del audio") },
+            text = {
+                OutlinedTextField(
+                    value = tempName,
+                    onValueChange = { tempName = it },
+                    label = { Text("Título") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showNameDialog?.let { path ->
+                        SoundManager.setDisplayName(context, path, tempName)
+                        selectedSound = path
+                        customSounds = SoundManager.getCustomSounds(context)
+                    }
+                    showNameDialog = null
+                }) {
+                    Text("Guardar")
+                }
+            }
+        )
+    }
+}
+
+private fun calculateRemainingTime(title: String, dateStr: String, timeStr: String): String {
+    return try {
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        val targetDate = sdf.parse("$dateStr $timeStr") ?: return ""
+        val now = Calendar.getInstance().time
+        
+        var diff = targetDate.time - now.time
+
+        // Si el usuario elige una hora que parece haber pasado pero es hoy, 
+        // y la diferencia es negativa por poco (menos de 24h), 
+        // asumimos que se refiere al día siguiente si no ha cambiado la fecha manualmente.
+        // Pero lo más probable es un error de zona horaria o segundos.
+        
+        // Ajuste: si la diferencia es negativa pero el usuario acaba de abrir el modal
+        // para una hora hoy, permitimos un margen de 1 minuto para evitar errores por segundos.
+        if (diff < -60000) return "La fecha seleccionada ya ha pasado."
+        if (diff < 0) diff = 0 // Menos de un minuto de retraso lo tratamos como "ahora"
+
+        val seconds = diff / 1000
+        val minutes = seconds / 60
+        val hours = minutes / 60
+        val days = hours / 24
+
+        val remainingMinutes = minutes % 60
+        val remainingHours = hours % 24
+
+        val parts = mutableListOf<String>()
+        if (days > 0) parts.add("$days ${if (days == 1L) "día" else "días"}")
+        if (remainingHours > 0) parts.add("$remainingHours ${if (remainingHours == 1L) "hora" else "horas"}")
+        if (remainingMinutes > 0) parts.add("$remainingMinutes ${if (remainingMinutes == 1L) "minuto" else "minutos"}")
+        
+        if (parts.isEmpty()) return "El recordatorio \"$title\" sonará en menos de un minuto."
+
+        val timeText = if (parts.size > 1) {
+            parts.dropLast(1).joinToString(", ") + " y " + parts.last()
+        } else {
+            parts.first()
+        }
+
+        "El recordatorio \"$title\" sonará en $timeText."
+    } catch (e: Exception) {
+        ""
     }
 }
 
