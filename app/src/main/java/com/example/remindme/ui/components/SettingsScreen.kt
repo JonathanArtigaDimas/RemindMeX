@@ -21,12 +21,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.remindme.SettingsManager
 import com.example.remindme.SoundManager
+import com.example.remindme.ui.theme.WineColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -482,10 +486,25 @@ fun SettingsScreen(
                     text = "RemindMe v1.0.3",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
+                        .padding(top = 16.dp),
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.bodySmall
+                )
+
+                Text(
+                    text = buildAnnotatedString {
+                        append("⚖️ Licda. Mylene Dánae Castro de Artiga ")
+                        withStyle(style = SpanStyle(color = WineColor)) {
+                            append("♥️")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 
                 Spacer(Modifier.height(80.dp)) // Padding for bottom nav
