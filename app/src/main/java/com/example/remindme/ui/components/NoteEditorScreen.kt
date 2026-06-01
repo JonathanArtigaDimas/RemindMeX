@@ -39,9 +39,11 @@ import java.util.Objects
 fun NoteEditorScreen(
     noteWithTags: NoteWithTags? = null,
     isQuickNote: Boolean = false,
+    initialIsShared: Boolean = false,
     availableTags: List<Tag> = emptyList(),
+    currentGroupId: String? = null,
     onDismiss: () -> Unit,
-    onSave: (Note, List<Tag>) -> Unit,
+    onSave: (Note, List<Tag>, Boolean) -> Unit,
     onDelete: (Note) -> Unit
 ) {
     val context = LocalContext.current
@@ -68,6 +70,8 @@ fun NoteEditorScreen(
     val defaultNoteColor = 0xFF1E293B
     var selectedColor by remember { mutableStateOf(noteWithTags?.note?.color ?: defaultNoteColor) }
     
+    var isShared by remember { mutableStateOf(initialIsShared) }
+
     val initialTags = noteWithTags?.tags?.map { it.name }?.toSet() ?: emptySet()
     var selectedTags by remember { mutableStateOf(initialTags) }
     
@@ -168,7 +172,7 @@ fun NoteEditorScreen(
                                     color = selectedColor,
                                     isQuickNote = isQuickNote
                                 )
-                                onSave(note, selectedTags.map { Tag(it) })
+                                onSave(note, selectedTags.map { Tag(it) }, isShared)
                                 onDismiss()
                             }
                         }) {
@@ -240,6 +244,51 @@ fun NoteEditorScreen(
                         ),
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                     )
+
+                    // Shared Note Toggle
+                    if (currentGroupId != null) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudQueue, 
+                                    contentDescription = null, 
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Compartir con el grupo",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Esta nota será visible para todo tu equipo",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Switch(
+                                    checked = isShared,
+                                    onCheckedChange = { isShared = it },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 

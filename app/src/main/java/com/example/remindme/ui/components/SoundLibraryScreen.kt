@@ -117,6 +117,39 @@ fun SoundLibraryContent(
 
         SoundSectionHeader("TUS GRABACIONES")
 
+        val recordings = customSounds.filter { it.substringAfterLast("/").startsWith("recording_") }
+        val importedSounds = customSounds.filter { !it.substringAfterLast("/").startsWith("recording_") }
+
+        if (recordings.isEmpty()) {
+            Text(
+                "No tienes grabaciones aún",
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            recordings.forEach { path ->
+                val displayTitle = SoundManager.getDisplayName(context, path)
+                
+                SoundItemCard(
+                    title = displayTitle,
+                    subtitle = "Grabación de voz",
+                    icon = Icons.Default.Mic,
+                    isPlaying = playingSoundPath == path,
+                    onPlay = { SoundManager.playSound(context, path) },
+                    onDelete = {
+                        SoundManager.deleteSound(context, path)
+                        customSounds = SoundManager.getCustomSounds(context)
+                    },
+                    onClick = { onSoundSelected(path) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SoundSectionHeader("SONIDOS IMPORTADOS")
+
         SoundItemCard(
             title = "Importar MP3",
             subtitle = "Selecciona un archivo del dispositivo",
@@ -127,23 +160,14 @@ fun SoundLibraryContent(
             onClick = { mp3Launcher.launch("audio/*") }
         )
 
-        if (customSounds.isEmpty()) {
-            Text(
-                "No tienes grabaciones aún",
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        } else {
-            customSounds.forEach { path ->
+        if (importedSounds.isNotEmpty()) {
+            importedSounds.forEach { path ->
                 val displayTitle = SoundManager.getDisplayName(context, path)
-                val isRecordingFile = path.substringAfterLast("/").startsWith("recording_")
                 
                 SoundItemCard(
                     title = displayTitle,
-                    subtitle = if (isRecordingFile) "Grabación de voz" else "Audio importado",
-                    icon = if (isRecordingFile) Icons.Default.Mic else Icons.Default.MusicNote,
+                    subtitle = "Audio importado",
+                    icon = Icons.Default.MusicNote,
                     isPlaying = playingSoundPath == path,
                     onPlay = { SoundManager.playSound(context, path) },
                     onDelete = {

@@ -41,8 +41,9 @@ fun NewReminderModal(
     initialSound: String = "Campana",
     initialRepetition: String = "Sin repetición",
     initialRepeatDays: String? = null,
+    initialType: String = "Recordatorio",
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, Long, String, String, String?) -> Unit
+    onSave: (String, String, String, String, String, Long, String, String, String?, String) -> Unit
 ) {
     val context = LocalContext.current
     var title by remember { mutableStateOf(initialTitle) }
@@ -51,6 +52,7 @@ fun NewReminderModal(
     var selectedColor by remember { mutableStateOf(initialColor) }
     var selectedSound by remember { mutableStateOf(initialSound) }
     var selectedRepetition by remember { mutableStateOf(initialRepetition) }
+    var selectedType by remember { mutableStateOf(initialType) }
     
     val isRecording by SoundManager.isRecording.collectAsState()
     var showNameDialog by remember { mutableStateOf<String?>(null) }
@@ -167,6 +169,45 @@ fun NewReminderModal(
                 Spacer(Modifier.width(48.dp))
             }
 
+            SectionHeader("DETALLES ADICIONALES")
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                listOf("Recordatorio", "Alarma").forEach { type ->
+                    val isSelected = selectedType == type
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedType = type },
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                if (type == "Alarma") Icons.Default.Alarm else Icons.Default.Notifications,
+                                null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                type,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             SectionHeader("TÍTULO")
             CustomTextField(
                 value = title, 
@@ -268,8 +309,8 @@ fun NewReminderModal(
             }
 
             // Countdown Timer
-            val remainingTimeText = remember(title, formattedDate, formattedTime) {
-                calculateRemainingTime(title, formattedDate, formattedTime)
+            val remainingTimeText = remember(title, formattedDate, formattedTime, selectedRepetition, selectedDays) {
+                calculateRemainingTime(title, formattedDate, formattedTime, selectedRepetition, selectedDays)
             }
 
             if (remainingTimeText.isNotEmpty() && isTitleValid) {
@@ -294,7 +335,7 @@ fun NewReminderModal(
                 onClick = { 
                     if (isTitleValid) {
                         val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
-                        onSave(title, description, formattedDate, formattedTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString) 
+                        onSave(title, description, formattedDate, formattedTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString, selectedType)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp).height(56.dp),
@@ -355,23 +396,25 @@ fun NewReminderModal(
     }
 }
 
-private fun calculateRemainingTime(title: String, dateStr: String, timeStr: String): String {
+private fun calculateRemainingTime(title: String, dateStr: String, timeStr: String, repetition: String, selectedDays: Set<Int>): String {
     return try {
         val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        val targetDate = sdf.parse("$dateStr $timeStr") ?: return ""
+        val initialDate = sdf.parse("$dateStr $timeStr") ?: return ""
         val now = Calendar.getInstance().time
         
-        var diff = targetDate.time - now.time
+        var targetTime = initialDate.time
 
-        // Si el usuario elige una hora que parece haber pasado pero es hoy, 
-        // y la diferencia es negativa por poco (menos de 24h), 
-        // asumimos que se refiere al día siguiente si no ha cambiado la fecha manualmente.
-        // Pero lo más probable es un error de zona horaria o segundos.
+        // Si el usuario elige una hora que parece haber pasado y hay repetición,
+        // calculamos la PRÓXIMA ocurrencia real.
+        if (targetTime <= now.time && repetition != "Sin repetición") {
+            val repeatDaysString = if (repetition == "Semanal") selectedDays.joinToString(",") else null
+            targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, repetition, repeatDaysString)
+        }
         
-        // Ajuste: si la diferencia es negativa pero el usuario acaba de abrir el modal
-        // para una hora hoy, permitimos un margen de 1 minuto para evitar errores por segundos.
+        var diff = targetTime - now.time
+
         if (diff < -60000) return "La fecha seleccionada ya ha pasado."
-        if (diff < 0) diff = 0 // Menos de un minuto de retraso lo tratamos como "ahora"
+        if (diff < 0) diff = 0
 
         val seconds = diff / 1000
         val minutes = seconds / 60

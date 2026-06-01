@@ -6,13 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [Reminder::class, Note::class, Tag::class, NoteTagCrossRef::class], 
-    version = 6,
+    entities = [Reminder::class, Note::class, Tag::class, NoteTagCrossRef::class, SharedNoteEntity::class, FavoriteGroup::class], 
+    version = 11,
     exportSchema = false
 )
 abstract class ReminderDatabase : RoomDatabase() {
     abstract fun reminderDao(): ReminderDao
     abstract fun noteDao(): NoteDao
+    abstract fun sharedNoteDao(): SharedNoteDao
+    abstract fun favoriteGroupDao(): FavoriteGroupDao
 
     companion object {
         @Volatile

@@ -16,6 +16,9 @@ object ReminderScheduler {
     fun scheduleReminder(context: Context, id: Int, title: String, date: String, time: String, repetition: String = "Sin repetición", repeatDays: String? = null) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
+        // Primero, cancelar cualquier alarma previa para este ID
+        cancelReminder(context, id)
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -33,14 +36,14 @@ object ReminderScheduler {
             if (dateObj != null) {
                 var triggerTime = dateObj.time
                 
-                // Si la fecha ya pasó o tiene repetición, calculamos la próxima ocurrencia
+                // Si la fecha ya pasó o tiene repetición, calculamos la PRÓXIMA ocurrencia real.
                 if (triggerTime <= System.currentTimeMillis() || (repetition != "Sin repetición")) {
                     triggerTime = getNextOccurrence(triggerTime, repetition, repeatDays)
                 }
 
                 if (triggerTime > System.currentTimeMillis()) {
                     // 1. Programar alarma principal
-                    scheduleSingleAlarm(context, id, title, triggerTime, 0)
+                    scheduleSingleAlarm(context, id, title, triggerTime, 0, repetition)
 
                     // 2. Lógica de notificaciones previas escalonadas
                     val now = System.currentTimeMillis()
@@ -50,17 +53,17 @@ object ReminderScheduler {
 
                     // Falta más de 1 hora
                     if (triggerTime - now > oneHourMillis) {
-                        scheduleSingleAlarm(context, id, title, triggerTime - oneHourMillis, 1) // 1 hora antes
+                        scheduleSingleAlarm(context, id, title, triggerTime - oneHourMillis, 1, repetition) // 1 hora antes
                     }
 
                     // Falta más de 30 minutos
                     if (triggerTime - now > thirtyMinutesMillis) {
-                        scheduleSingleAlarm(context, id, title, triggerTime - thirtyMinutesMillis, 3) // 30 min antes
+                        scheduleSingleAlarm(context, id, title, triggerTime - thirtyMinutesMillis, 3, repetition) // 30 min antes
                     }
 
                     // Falta más de 10 minutos
                     if (triggerTime - now > tenMinutesMillis) {
-                        scheduleSingleAlarm(context, id, title, triggerTime - tenMinutesMillis, 2) // 10 min antes
+                        scheduleSingleAlarm(context, id, title, triggerTime - tenMinutesMillis, 2, repetition) // 10 min antes
                     }
                     
                     Log.d(TAG, "Alarms scheduled for $id. Main at $triggerTime. Repetition: $repetition")
@@ -71,12 +74,13 @@ object ReminderScheduler {
         }
     }
 
-    private fun scheduleSingleAlarm(context: Context, id: Int, title: String, triggerTime: Long, type: Int) {
+    private fun scheduleSingleAlarm(context: Context, id: Int, title: String, triggerTime: Long, type: Int, repetition: String = "Sin repetición") {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("title", title)
             putExtra("id", id)
             putExtra("notification_type", type) // 0: principal, 1: 1 hora, 2: 10 min
+            putExtra("repetition", repetition)
             `package` = context.packageName
         }
 
@@ -97,46 +101,39 @@ object ReminderScheduler {
         alarmManager.setAlarmClock(info, pendingIntent)
     }
 
-    private fun getNextOccurrence(startTime: Long, repetition: String, repeatDays: String?): Long {
+    fun getNextOccurrence(startTime: Long, repetition: String, repeatDays: String?): Long {
         val calendar = Calendar.getInstance().apply { timeInMillis = startTime }
         val now = Calendar.getInstance()
         
-        // Ensure we are at least at the current time or after
-        if (calendar.before(now)) {
+        // Si el tiempo base ya pasó o es "ahora", avanzamos al menos un paso
+        if (calendar.timeInMillis <= now.timeInMillis) {
             when (repetition) {
-                "Diario" -> {
-                    while (calendar.before(now)) calendar.add(Calendar.DAY_OF_YEAR, 1)
-                }
-                "Semanal" -> {
-                    val allowedDays = repeatDays?.split(",")?.map { it.toInt() }?.toSet() ?: emptySet()
-                    
-                    // Si no hay días seleccionados, tratamos como semanal normal (cada 7 días)
-                    if (allowedDays.isEmpty()) {
-                        while (calendar.before(now)) calendar.add(Calendar.WEEK_OF_YEAR, 1)
-                    } else {
-                        // Buscar el próximo día permitido
-                        calendar.add(Calendar.MINUTE, 1) // Avanzar un poco para no repetir el mismo instante
-                        while (calendar.before(now) || !allowedDays.contains(calendar.get(Calendar.DAY_OF_WEEK))) {
-                            calendar.add(Calendar.DAY_OF_YEAR, 1)
-                        }
-                    }
-                }
-                "Mensual" -> {
-                    while (calendar.before(now)) calendar.add(Calendar.MONTH, 1)
-                }
-                else -> return startTime
-            }
-        } else if (repetition == "Semanal" && repeatDays != null) {
-            // Caso donde la fecha inicial es futura, pero debemos validar si el día de la semana es permitido
-            val allowedDays = repeatDays.split(",").map { it.toInt() }.toSet()
-            if (allowedDays.isNotEmpty() && !allowedDays.contains(calendar.get(Calendar.DAY_OF_WEEK))) {
-                while (!allowedDays.contains(calendar.get(Calendar.DAY_OF_WEEK))) {
-                    calendar.add(Calendar.DAY_OF_YEAR, 1)
-                }
+                "Diario" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+                "Semanal" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+                "Mensual" -> calendar.add(Calendar.MONTH, 1)
             }
         }
 
+        // Buscamos la siguiente fecha válida que esté en el futuro
+        var safetyCount = 0
+        while (calendar.timeInMillis <= now.timeInMillis || (repetition == "Semanal" && !isValidDay(calendar, repeatDays))) {
+            when (repetition) {
+                "Diario" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+                "Semanal" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
+                "Mensual" -> calendar.add(Calendar.MONTH, 1)
+                else -> break
+            }
+            safetyCount++
+            if (safetyCount > 366) break // Seguridad para evitar bucles infinitos
+        }
+
         return calendar.timeInMillis
+    }
+
+    private fun isValidDay(calendar: Calendar, repeatDays: String?): Boolean {
+        val allowedDays = repeatDays?.split(",")?.filter { it.isNotEmpty() }?.map { it.toInt() }?.toSet() ?: emptySet()
+        if (allowedDays.isEmpty()) return true // Si no hay días marcados, cualquier día es válido (se comporta como semanal normal)
+        return allowedDays.contains(calendar.get(Calendar.DAY_OF_WEEK))
     }
 
     fun cancelReminder(context: Context, id: Int) {

@@ -9,7 +9,7 @@ import android.os.VibratorManager
 object VibrationManager {
     private var vibrator: Vibrator? = null
 
-    fun startVibration(context: Context) {
+    fun startVibration(context: Context, isAlarm: Boolean = false) {
         if (vibrator != null) return
         
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -20,15 +20,21 @@ object VibrationManager {
             context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
 
-        // Patrón: Vibrar 1s, Esperar 0.5s. Repetir 5 veces.
-        val pattern = longArrayOf(0, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000)
+        // Patrón: Vibrar 1s, Esperar 0.5s. 
+        // Si es alarma, se repite infinitamente (índice 0). Si es recordatorio, solo 5 veces (-1).
+        val pattern = if (isAlarm) {
+            longArrayOf(0, 1200, 400) // Un poco más intensa para alarmas
+        } else {
+            longArrayOf(0, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000)
+        }
+        
+        val repeatIndex = if (isAlarm) 0 else -1
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // -1 en el argumento repeat indica que no debe entrar en bucle infinito
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, repeatIndex))
         } else {
             @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, -1)
+            vibrator?.vibrate(pattern, repeatIndex)
         }
     }
 

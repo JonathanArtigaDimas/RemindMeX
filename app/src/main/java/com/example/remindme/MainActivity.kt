@@ -47,10 +47,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.google.firebase.FirebaseApp.initializeApp(this)
         enableEdgeToEdge()
         
         NotificationHelper.createNotificationChannel(this)
         checkAndRequestOverlayPermission()
+        checkAndRequestBatteryOptimization()
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -83,7 +85,24 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
-                val tabs = listOf("inicio", "notas", "calendario", "ajustes")
+                val sharedViewModel: SharedNotesViewModel = viewModel(
+                    factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                    val repo = SharedNotesRepository(
+                                        com.google.firebase.firestore.FirebaseFirestore.getInstance(),
+                                        com.google.firebase.auth.FirebaseAuth.getInstance(),
+                                        database.sharedNoteDao(),
+                                        database.favoriteGroupDao()
+                                    )
+                                    val storageRepo = SharedStorageRepository(
+                                        com.google.firebase.storage.FirebaseStorage.getInstance()
+                                    )
+                                    return SharedNotesViewModel(repo, storageRepo, applicationContext) as T
+                                }
+                    }
+                )
+
+                val tabs = listOf("inicio", "notas", "compartidas", "calendario", "ajustes")
                 val pagerState = rememberPagerState(pageCount = { tabs.size })
                 val coroutineScope = rememberCoroutineScope()
                 
@@ -96,10 +115,13 @@ class MainActivity : ComponentActivity() {
                 val showQuickNoteSheet = remember { mutableStateOf(false) }
                 val editingNote = remember { mutableStateOf<NoteWithTags?>(null) }
                 val isQuickNote = remember { mutableStateOf(false) }
+                val noteEditorIsShared = remember { mutableStateOf(false) }
+                val editingSharedNoteId = remember { mutableStateOf<String?>(null) }
 
                 val reminders by reminderDao.getAllReminders().collectAsState(initial = emptyList())
                 
                 var reminderToDelete by remember { mutableStateOf<Reminder?>(null) }
+                var showClearCompletedDialog by remember { mutableStateOf(false) }
                 var toastMessage by remember { mutableStateOf<String?>(null) }
                 
                 LaunchedEffect(toastMessage) {
@@ -113,18 +135,33 @@ class MainActivity : ComponentActivity() {
                     val now = Calendar.getInstance()
                     val todayStr = reminderDateFormat.format(now.time)
                     
+                    val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
+                    val tomorrowStr = reminderDateFormat.format(tomorrow.time)
+                    
                     val helperCal = Calendar.getInstance()
                     val todayMillis = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                    
+                    val tomorrowMillis = Calendar.getInstance().apply {
+                        add(Calendar.DAY_OF_YEAR, 1)
                         set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
                     }.timeInMillis
                     
                     val next7Limit = todayMillis + (7 * 24 * 60 * 60 * 1000L)
                     
                     val today = mutableListOf<Reminder>()
+                    val tomorrowList = mutableListOf<Reminder>()
                     val next7Days = mutableListOf<Reminder>()
                     val future = mutableListOf<Reminder>()
+                    val completed = mutableListOf<Reminder>()
 
                     reminders.forEach { r ->
+                        if (r.isCompleted) {
+                            completed.add(r)
+                            return@forEach
+                        }
+                        
                         try {
                             val rDateStr = r.dateTime.split(" ")[0]
                             val rDate = reminderDateFormat.parse(rDateStr) ?: return@forEach
@@ -138,6 +175,8 @@ class MainActivity : ComponentActivity() {
                             
                             if (rDateStr == todayStr || rDateMillis <= todayMillis) {
                                 today.add(r)
+                            } else if (rDateStr == tomorrowStr) {
+                                tomorrowList.add(r)
                             } else if (rDateMillis <= next7Limit) {
                                 next7Days.add(r)
                             } else {
@@ -149,8 +188,10 @@ class MainActivity : ComponentActivity() {
                     }
                     listOf(
                         "📅 Hoy" to today,
+                        "🌅 Mañana" to tomorrowList,
                         "🗓️ Próximos 7 Días" to next7Days,
-                        "📆 Próximos Meses" to future
+                        "📆 Próximos Meses" to future,
+                        "✅ Completados" to completed
                     )
                 }
                 
@@ -213,7 +254,7 @@ class MainActivity : ComponentActivity() {
                             when (tabs[page]) {
                                 "inicio" -> {
                                     Column(modifier = Modifier.fillMaxSize()) {
-                                        ReminderHeader(reminders.size)
+                                        ReminderHeader(reminders.count { !it.isCompleted })
                                         
                                         if (reminders.isEmpty()) {
                                             Box(
@@ -253,14 +294,28 @@ class MainActivity : ComponentActivity() {
                                                 categorizedReminders.forEach { (sectionTitle, items) ->
                                                     if (items.isNotEmpty()) {
                                                         item {
-                                                            Text(
-                                                                text = sectionTitle.uppercase(),
-                                                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                                                                style = MaterialTheme.typography.labelLarge,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = MaterialTheme.colorScheme.secondary,
-                                                                letterSpacing = 1.sp
-                                                            )
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(
+                                                                    text = sectionTitle.uppercase(),
+                                                                    style = MaterialTheme.typography.labelLarge,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.secondary,
+                                                                    letterSpacing = 1.sp
+                                                                )
+                                                                
+                                                                if (sectionTitle == "✅ Completados") {
+                                                                    TextButton(
+                                                                        onClick = { showClearCompletedDialog = true },
+                                                                        contentPadding = PaddingValues(0.dp)
+                                                                    ) {
+                                                                        Text("Limpiar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                         
                                                         items(
@@ -302,14 +357,35 @@ class MainActivity : ComponentActivity() {
                                 "notas" -> {
                                     NotesScreen(
                                         viewModel = noteViewModel,
-                                        onAddNote = {
+                                        sharedViewModel = sharedViewModel,
+                                        onAddNote = { isShared ->
                                             editingNote.value = null
                                             isQuickNote.value = false
+                                            noteEditorIsShared.value = isShared
+                                            editingSharedNoteId.value = null
                                             showNoteEditor.value = true
                                         },
-                                        onEditNote = {
-                                            editingNote.value = it
+                                        onEditNote = { noteWithTags ->
+                                            editingNote.value = noteWithTags
                                             isQuickNote.value = false
+                                            noteEditorIsShared.value = false
+                                            editingSharedNoteId.value = null
+                                            showNoteEditor.value = true
+                                        },
+                                        onEditSharedNote = { sharedNote ->
+                                            // Convert SharedNoteEntity to a temporary NoteWithTags for the editor
+                                            editingNote.value = NoteWithTags(
+                                                note = Note(
+                                                    title = sharedNote.title,
+                                                    content = sharedNote.content,
+                                                    createdAt = sharedNote.createdAt,
+                                                    color = 0xFF1E293B // Color base
+                                                ),
+                                                tags = emptyList()
+                                            )
+                                            isQuickNote.value = false
+                                            noteEditorIsShared.value = true
+                                            editingSharedNoteId.value = sharedNote.noteId
                                             showNoteEditor.value = true
                                         }
                                     )
@@ -337,6 +413,35 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                 }
+                                "compartidas" -> {
+                                    SharedNotesScreen(
+                                        viewModel = sharedViewModel,
+                                        onAddSharedNote = {
+                                            editingNote.value = null
+                                            isQuickNote.value = false
+                                            noteEditorIsShared.value = true
+                                            editingSharedNoteId.value = null
+                                            showNoteEditor.value = true
+                                        },
+                                        onEditSharedNote = { sharedNote ->
+                                            editingNote.value = NoteWithTags(
+                                                note = Note(
+                                                    title = sharedNote.title,
+                                                    content = sharedNote.content,
+                                                    createdAt = sharedNote.createdAt,
+                                                    color = sharedNote.color,
+                                                    imagePath = sharedNote.imagePath,
+                                                    audioPath = sharedNote.audioPath
+                                                ),
+                                                tags = emptyList()
+                                            )
+                                            isQuickNote.value = false
+                                            noteEditorIsShared.value = true
+                                            editingSharedNoteId.value = sharedNote.noteId
+                                            showNoteEditor.value = true
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -348,24 +453,94 @@ class MainActivity : ComponentActivity() {
                             onDismiss = { showReminderModal.value = false },
                             onSave = { r ->
                                 lifecycleScope.launch {
-                                    val time = r.dateTime.split(" ")[1]
+                                    val parts = r.dateTime.split(" ")
+                                    val dateStr = parts[0]
+                                    val timeStr = parts[1]
+                                    
+                                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                                    val initialDateTime = try { sdf.parse("${dateStr} ${timeStr}")?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+                                    val now = System.currentTimeMillis()
+                                    
+                                    var finalReminder = r
+                                    
+                                    // Si es recurrente y la fecha inicial ya pasó, calculamos la próxima ocurrencia real para guardarla en DB
+                                    if (initialDateTime <= now && r.repetition != "Sin repetición") {
+                                        val nextOccurrence = ReminderScheduler.getNextOccurrence(initialDateTime, r.repetition ?: "Sin repetición", r.repeatDays)
+                                        val nextDateTimeStr = sdf.format(java.util.Date(nextOccurrence))
+                                        finalReminder = r.copy(dateTime = nextDateTimeStr, isCompleted = false)
+                                    }
+
+                                    val displayTimeStr = finalReminder.dateTime.split(" ")[1]
                                     val formattedTime = try {
                                         val sdf24 = SimpleDateFormat("HH:mm", Locale.getDefault())
                                         val sdf12 = SimpleDateFormat("h:mm a", Locale.getDefault())
-                                        sdf12.format(sdf24.parse(time)!!)
-                                    } catch (e: Exception) { time }
+                                        sdf12.format(sdf24.parse(displayTimeStr)!!)
+                                    } catch (_: Exception) { displayTimeStr }
 
-                                    if (r.id != 0) {
-                                        reminderDao.update(r)
-                                        toastMessage = "Recordatorio actualizado para las $formattedTime"
+                                    if (finalReminder.id != 0) {
+                                        reminderDao.update(finalReminder)
+                                        val newParts = finalReminder.dateTime.split(" ")
+                                        ReminderScheduler.scheduleReminder(
+                                            this@MainActivity, 
+                                            finalReminder.id, 
+                                            finalReminder.title, 
+                                            newParts[0], 
+                                            newParts[1], 
+                                            finalReminder.repetition ?: "Sin repetición", 
+                                            finalReminder.repeatDays
+                                        )
+                                        
+                                        // Calcular tiempo restante para el mensaje
+                                        val finalParts = finalReminder.dateTime.split(" ")
+                                        val targetMilli = try { sdf.parse("${finalParts[0]} ${finalParts[1]}")?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+                                        val durationText = formatDurationText(targetMilli - now)
+                                        toastMessage = "Recordatorio actualizado: definido para dentro de $durationText desde ahora"
                                     } else {
-                                        val newId = reminderDao.insert(r).toInt()
-                                        val date = r.dateTime.split(" ")[0]
-                                        ReminderScheduler.scheduleReminder(this@MainActivity, newId, r.title, date, time, r.repetition ?: "Sin repetición", r.repeatDays)
-                                        toastMessage = "Recordatorio creado para las $formattedTime"
+                                        val newId = reminderDao.insert(finalReminder).toInt()
+                                        val newParts = finalReminder.dateTime.split(" ")
+                                        ReminderScheduler.scheduleReminder(
+                                            this@MainActivity, 
+                                            newId, 
+                                            finalReminder.title, 
+                                            newParts[0], 
+                                            newParts[1], 
+                                            finalReminder.repetition ?: "Sin repetición", 
+                                            finalReminder.repeatDays
+                                        )
+                                        
+                                        // Calcular tiempo restante para el mensaje
+                                        val targetMilli = try { sdf.parse("${newParts[0]} ${newParts[1]}")?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+                                        val durationText = formatDurationText(targetMilli - now)
+                                        toastMessage = "Recordatorio creado: definido para dentro de $durationText desde ahora"
                                     }
                                 }
                                 showReminderModal.value = false
+                            }
+                        )
+                    }
+
+                    if (showClearCompletedDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showClearCompletedDialog = false },
+                            title = { Text("Limpiar completados") },
+                            text = { Text("¿Deseas eliminar permanentemente todos los recordatorios completados?") },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        lifecycleScope.launch {
+                                            val completed = reminders.filter { it.isCompleted }
+                                            completed.forEach { reminderDao.delete(it) }
+                                        }
+                                        showClearCompletedDialog = false
+                                    }
+                                ) {
+                                    Text("Limpiar Todo", color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showClearCompletedDialog = false }) {
+                                    Text("Cancelar")
+                                }
                             }
                         )
                     }
@@ -400,16 +575,50 @@ class MainActivity : ComponentActivity() {
 
                     if (showNoteEditor.value) {
                         val tags by noteViewModel.allTags.collectAsState()
+                        val currentGroupId by sharedViewModel.currentGroupId.collectAsState()
+                        
                         NoteEditorScreen(
                             noteWithTags = editingNote.value,
                             isQuickNote = isQuickNote.value,
+                            initialIsShared = noteEditorIsShared.value,
                             availableTags = tags,
-                            onDismiss = { showNoteEditor.value = false },
-                            onSave = { note, tags ->
-                                noteViewModel.saveNote(note, tags)
+                            currentGroupId = currentGroupId,
+                            onDismiss = { 
+                                showNoteEditor.value = false 
+                                editingNote.value = null
+                                noteEditorIsShared.value = false
+                                editingSharedNoteId.value = null
+                            },
+                            onSave = { note, tags, isShared ->
+                                lifecycleScope.launch {
+                                    if (isShared && currentGroupId != null) {
+                                        // Guardamos solo en la nube para el apartado de equipos
+                                        sharedViewModel.shareExistingNote(
+                                            groupId = currentGroupId!!, 
+                                            title = note.title, 
+                                            content = note.content,
+                                            imagePath = note.imagePath,
+                                            audioPath = note.audioPath,
+                                            color = note.color,
+                                            noteId = editingSharedNoteId.value
+                                        )
+                                    } else {
+                                        // Guardamos solo localmente para el apartado de notas
+                                        noteViewModel.saveNote(note, tags)
+                                    }
+                                }
+                                showNoteEditor.value = false
+                                editingNote.value = null
+                                noteEditorIsShared.value = false
+                                editingSharedNoteId.value = null
                             },
                             onDelete = { note ->
+                                // Solo borramos localmente por ahora
                                 noteViewModel.deleteNote(note)
+                                showNoteEditor.value = false
+                                editingNote.value = null
+                                noteEditorIsShared.value = false
+                                editingSharedNoteId.value = null
                             }
                         )
                     }
@@ -539,6 +748,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun formatDurationText(diff: Long): String {
+        var duration = if (diff < 0) 0 else diff
+        val days = duration / (24 * 60 * 60 * 1000)
+        duration %= (24 * 60 * 60 * 1000)
+        val hours = duration / (60 * 60 * 1000)
+        duration %= (60 * 60 * 1000)
+        val minutes = duration / (60 * 1000)
+        
+        val parts = mutableListOf<String>()
+        if (days > 0) parts.add("$days ${if (days == 1L) "día" else "días"}")
+        if (hours > 0) parts.add("$hours ${if (hours == 1L) "hora" else "horas"}")
+        if (minutes > 0) parts.add("$minutes ${if (minutes == 1L) "minuto" else "minutos"}")
+        
+        if (parts.isEmpty()) return "menos de un minuto"
+        
+        return if (parts.size > 1) {
+            parts.dropLast(1).joinToString(", ") + " y " + parts.last()
+        } else {
+            parts.first()
+        }
+    }
+
     private fun checkAndRequestOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!android.provider.Settings.canDrawOverlays(this)) {
@@ -547,6 +778,25 @@ class MainActivity : ComponentActivity() {
                     android.net.Uri.parse("package:$packageName")
                 )
                 startActivity(intent)
+            }
+        }
+    }
+
+    private fun checkAndRequestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:$packageName")
+                )
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // Fallback to battery optimization settings
+                    val settingsIntent = android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(settingsIntent)
+                }
             }
         }
     }
@@ -578,14 +828,16 @@ fun ReminderEditorOverlay(
         initialSound = editingReminder?.sound ?: defaultSound,
         initialRepetition = editingReminder?.repetition ?: "Sin repetición",
         initialRepeatDays = editingReminder?.repeatDays,
+        initialType = editingReminder?.type ?: "Recordatorio",
         onDismiss = onDismiss,
-        onSave = { title, desc, date, time, category, color, sound, repetition, repeatDays ->
+        onSave = { title, desc, date, time, category, color, sound, repetition, repeatDays, type ->
             val reminder = (editingReminder ?: Reminder(
                 title = title, 
                 description = desc, 
                 dateTime = "$date $time",
                 category = category,
-                color = color
+                color = color,
+                type = type
             )).copy(
                 title = title,
                 description = desc,
@@ -594,7 +846,8 @@ fun ReminderEditorOverlay(
                 color = color,
                 sound = sound,
                 repetition = repetition,
-                repeatDays = repeatDays
+                repeatDays = repeatDays,
+                type = type
             )
             onSave(reminder)
         }

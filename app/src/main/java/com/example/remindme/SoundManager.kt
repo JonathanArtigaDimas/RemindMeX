@@ -47,13 +47,13 @@ object SoundManager {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
-            mediaPlayer = if (soundPath.startsWith("/")) {
+            mediaPlayer = if (soundPath.startsWith("/") || soundPath.startsWith("http")) {
                 MediaPlayer().apply {
                     setDataSource(soundPath)
                     setAudioAttributes(audioAttributes)
                     isLooping = loop
-                    prepare()
-                    start()
+                    prepareAsync()
+                    setOnPreparedListener { start() }
                 }
             } else {
                 val resId = getSoundResourceId(context, soundPath)
@@ -189,8 +189,15 @@ object SoundManager {
 
     fun saveMp3ToInternalStorage(context: Context, uri: Uri): String? {
         return try {
-            val fileName = "custom_sound_${System.currentTimeMillis()}.mp3"
-            val file = File(context.filesDir, fileName)
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            cursor?.moveToFirst()
+            val originalName = if (nameIndex != null && nameIndex != -1) cursor.getString(nameIndex) else "custom_sound_${System.currentTimeMillis()}.mp3"
+            cursor?.close()
+
+            // Sanitize filename: replace spaces and special characters
+            val sanitizedName = originalName.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+            val file = File(context.filesDir, sanitizedName)
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 file.outputStream().use { outputStream ->
                     inputStream.copyTo(outputStream)
@@ -198,6 +205,12 @@ object SoundManager {
             }
             val path = file.absolutePath
             saveCustomSoundPath(context, path)
+            
+            // Si el nombre original es distinto del nombre del archivo (con prefijos de sistema),
+            // o simplemente para asegurar, guardamos el nombre mostrado.
+            val displayName = originalName.substringBeforeLast(".")
+            setDisplayName(context, path, displayName)
+
             path
         } catch (e: Exception) {
             Log.e("SoundManager", "Error al guardar MP3: ${e.message}")

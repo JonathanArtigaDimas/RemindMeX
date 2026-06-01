@@ -15,52 +15,65 @@ class AlarmReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("title") ?: "Recordatorio"
         val id = intent.getIntExtra("id", 0)
         val type = intent.getIntExtra("notification_type", 0) // 0: principal, 1: 1 hora, 2: 10 min, 3: 30 min
+        val repetition = intent.getStringExtra("repetition") ?: "Sin repetición"
+
+        // Adquirir un WakeLock momentáneo para asegurar que el procesamiento termine
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "RemindMe:AlarmReceiver")
+        wakeLock.acquire(5000) // 5 segundos son suficientes
 
         if (type == 0) {
             handleMainReminder(context, id, title)
         } else {
-            showPreNotification(context, id, title, type)
+            showPreNotification(context, id, title, type, repetition)
         }
     }
 
     private fun handleMainReminder(context: Context, id: Int, title: String) {
         val database = ReminderDatabase.getDatabase(context)
         val dao = database.reminderDao()
+        val pendingResult = goAsync()
         
         CoroutineScope(Dispatchers.IO).launch {
-            val existing = dao.getReminderById(id)
-            if (existing == null) return@launch
-            
-            val description = existing.description ?: ""
-            val color = existing.color ?: 0xFF3B82F6
-            val repetition = existing.repetition ?: "Sin repetición"
-            val repeatDays = existing.repeatDays
-            val sound = existing.sound ?: "Campana"
+            try {
+                val existing = dao.getReminderById(id)
+                if (existing == null) return@launch
+                
+                val description = existing.description ?: ""
+                val color = existing.color ?: 0xFF3B82F6
+                val repetition = existing.repetition ?: "Sin repetición"
+                val repeatDays = existing.repeatDays
+                val sound = existing.sound ?: "Campana"
+                val reminderType = existing.type
 
-            dao.update(existing.copy(isCompleted = true))
+                dao.update(existing.copy(isCompleted = true))
 
-            if (repetition != "Sin repetición") {
-                val parts = existing.dateTime.split(" ")
-                if (parts.size == 2) {
-                    ReminderScheduler.scheduleReminder(context, id, title, parts[0], parts[1], repetition, repeatDays)
+                if (repetition != "Sin repetición") {
+                    val parts = existing.dateTime.split(" ")
+                    if (parts.size == 2) {
+                        ReminderScheduler.scheduleReminder(context, id, title, parts[0], parts[1], repetition, repeatDays)
+                    }
                 }
-            }
 
-            val alertIntent = Intent(context, ReminderAlertActivity::class.java).apply {
-                putExtra("id", id)
-                putExtra("title", title)
-                putExtra("description", description)
-                putExtra("color", color)
-                putExtra("sound", sound)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            context.startActivity(alertIntent)
+                val alertIntent = Intent(context, ReminderAlertActivity::class.java).apply {
+                    putExtra("id", id)
+                    putExtra("title", title)
+                    putExtra("description", description)
+                    putExtra("color", color)
+                    putExtra("sound", sound)
+                    putExtra("type", reminderType)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                context.startActivity(alertIntent)
 
-            showNotification(context, id, title, description, sound, color)
+                showNotification(context, id, title, description, sound, color)
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 
-    private fun showPreNotification(context: Context, id: Int, title: String, type: Int) {
+    private fun showPreNotification(context: Context, id: Int, title: String, type: Int, repetition: String) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
         val contentTitle = when (type) {
@@ -84,7 +97,7 @@ class AlarmReceiver : BroadcastReceiver() {
         // Usar canal SIN vibración para las pre-notificaciones
         val channelId = NotificationHelper.getChannelIdForSound(context, defaultSound, enableVibration = false)
 
-        val notification = NotificationCompat.Builder(context, channelId)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
@@ -92,9 +105,23 @@ class AlarmReceiver : BroadcastReceiver() {
             .setVibrate(null) // Asegurar que no vibre en la notificación individual
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .build()
 
-        notificationManager.notify(id + (type * 1000000), notification)
+        // Botón "Desactivar por hoy" para Diario y Semanal
+        if (repetition == "Diario" || repetition == "Semanal") {
+            val deactivateIntent = Intent(context, ReminderActionReceiver::class.java).apply {
+                action = ReminderActionReceiver.ACTION_DEACTIVATE_FOR_TODAY
+                putExtra("id", id)
+            }
+            val deactivatePendingIntent = PendingIntent.getBroadcast(
+                context, 
+                id + (type * 1000000) + 500, // Unique request code
+                deactivateIntent, 
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Desactivar por hoy", deactivatePendingIntent)
+        }
+
+        notificationManager.notify(id + (type * 1000000), builder.build())
     }
 
     private fun showNotification(context: Context, id: Int, title: String, description: String, soundPath: String, color: Long) {

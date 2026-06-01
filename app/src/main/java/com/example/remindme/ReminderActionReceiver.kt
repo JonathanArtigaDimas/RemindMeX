@@ -15,6 +15,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SNOOZE = "SNOOZE"
         const val ACTION_COMPLETE = "COMPLETE"
+        const val ACTION_DEACTIVATE_FOR_TODAY = "DEACTIVATE_FOR_TODAY"
         const val ACTION_DISMISS_ALARM = "com.example.remindme.DISMISS_ALARM"
     }
 
@@ -43,6 +44,53 @@ class ReminderActionReceiver : BroadcastReceiver() {
             context.startActivity(mainIntent)
         } else if (action == ACTION_SNOOZE && id != -1) {
             snoozeReminder(context, id, title)
+        } else if (action == ACTION_DEACTIVATE_FOR_TODAY && id != -1) {
+            deactivateForToday(context, id)
+        }
+    }
+
+    private fun deactivateForToday(context: Context, id: Int) {
+        val database = ReminderDatabase.getDatabase(context)
+        val dao = database.reminderDao()
+        CoroutineScope(Dispatchers.IO).launch {
+            val existing = dao.getReminderById(id)
+            if (existing != null) {
+                val repetition = existing.repetition ?: "Sin repetición"
+                // Cancel current alarms
+                ReminderScheduler.cancelReminder(context, id)
+
+                // Skip all pre-notifications for today as well
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(id + 1000000) // 1h
+                notificationManager.cancel(id + 2000000) // 10m
+                notificationManager.cancel(id + 3000000) // 30m
+
+                // Calculate next occurrence starting from tomorrow
+                val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                val currentDateTime = sdf.parse(existing.dateTime)
+                
+                val tomorrowCalendar = Calendar.getInstance().apply {
+                    time = currentDateTime ?: Date()
+                    add(Calendar.DAY_OF_YEAR, 1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                }
+
+                val nextTime = ReminderScheduler.getNextOccurrence(tomorrowCalendar.timeInMillis, repetition, existing.repeatDays)
+                val nextDateTime = sdf.format(Date(nextTime))
+                
+                val updated = existing.copy(
+                    dateTime = nextDateTime,
+                    isCompleted = false
+                )
+                dao.update(updated)
+                ReminderScheduler.scheduleReminder(
+                    context, id, existing.title, 
+                    nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
+                    repetition, existing.repeatDays
+                )
+            }
         }
     }
 
@@ -52,7 +100,27 @@ class ReminderActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val existing = dao.getReminderById(id)
             if (existing != null) {
-                dao.update(existing.copy(isCompleted = true))
+                val repetition = existing.repetition ?: "Sin repetición"
+                if (repetition != "Sin repetición") {
+                    // Reprogramar para la siguiente ocurrencia
+                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    val currentDate = sdf.parse(existing.dateTime)?.time ?: System.currentTimeMillis()
+                    val nextTime = ReminderScheduler.getNextOccurrence(currentDate, repetition, existing.repeatDays)
+                    val nextDateTime = sdf.format(Date(nextTime))
+                    
+                    val updated = existing.copy(
+                        dateTime = nextDateTime,
+                        isCompleted = false
+                    )
+                    dao.update(updated)
+                    ReminderScheduler.scheduleReminder(
+                        context, id, existing.title, 
+                        nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
+                        repetition, existing.repeatDays
+                    )
+                } else {
+                    dao.update(existing.copy(isCompleted = true))
+                }
             }
         }
     }

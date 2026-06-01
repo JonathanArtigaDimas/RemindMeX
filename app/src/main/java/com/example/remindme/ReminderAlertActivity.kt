@@ -72,12 +72,18 @@ class ReminderAlertActivity : ComponentActivity() {
         val description = intent.getStringExtra("description") ?: ""
         val colorLong = intent.getLongExtra("color", 0xFF3B82F6)
         val sound = intent.getStringExtra("sound") ?: "Campana"
+        val type = intent.getStringExtra("type") ?: "Recordatorio"
 
-        // Reiniciar sonido y vibración si es una nueva alarma o re-entrada
+        val isAlarm = type == "Alarma"
+
+        // Reiniciar sonido y vibración
         SoundManager.stopSound()
-        SoundManager.playSound(this, sound, loop = false) // Quitado el loop para que suene una vez
+        // Si es alarma, se pone en bucle (loop = true)
+        SoundManager.playSound(this, sound, loop = isAlarm) 
+        
         VibrationManager.stopVibration(this)
-        VibrationManager.startVibration(this)
+        // Vibración infinita si es alarma
+        VibrationManager.startVibration(this, isAlarm = isAlarm)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -142,7 +148,32 @@ class ReminderAlertActivity : ComponentActivity() {
             val dao = ReminderDatabase.getDatabase(this@ReminderAlertActivity).reminderDao()
             val existing = dao.getReminderById(id)
             if (existing != null) {
-                dao.update(existing.copy(isCompleted = true))
+                val repetition = existing.repetition ?: "Sin repetición"
+                if (repetition != "Sin repetición") {
+                    // Reprogramar para la siguiente ocurrencia
+                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                    val currentDate = try {
+                        sdf.parse(existing.dateTime)?.time ?: System.currentTimeMillis()
+                    } catch (_: Exception) {
+                        System.currentTimeMillis()
+                    }
+                    val nextTime = ReminderScheduler.getNextOccurrence(currentDate, repetition, existing.repeatDays)
+                    val nextDateTime = sdf.format(Date(nextTime))
+                    
+                    val updated = existing.copy(
+                        dateTime = nextDateTime,
+                        isCompleted = false // Se mantiene ACTIVO para mañana
+                    )
+                    dao.update(updated)
+                    ReminderScheduler.scheduleReminder(
+                        this@ReminderAlertActivity, id, existing.title, 
+                        nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
+                        repetition, existing.repeatDays
+                    )
+                } else {
+                    // Si no tiene repetición, se marca como completado normal
+                    dao.update(existing.copy(isCompleted = true))
+                }
             }
         }
     }

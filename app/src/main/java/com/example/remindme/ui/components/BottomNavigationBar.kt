@@ -20,6 +20,7 @@ fun BottomNavigationBar(selectedTab: String, onTabSelected: (String) -> Unit) {
         val items = listOf(
             "inicio" to ("Inicio" to Icons.Default.Home),
             "notas" to ("Notas" to Icons.AutoMirrored.Filled.Notes),
+            "compartidas" to ("Equipos" to Icons.Default.Groups),
             "calendario" to ("Calendario" to Icons.Default.CalendarMonth),
             "ajustes" to ("Ajustes" to Icons.Default.Settings)
         )
