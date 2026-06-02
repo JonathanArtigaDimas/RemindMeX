@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [Reminder::class, Note::class, Tag::class, NoteTagCrossRef::class, SharedNoteEntity::class, FavoriteGroup::class], 
-    version = 11,
+    entities = [Reminder::class, Note::class, Tag::class, NoteTagCrossRef::class, SharedNoteEntity::class, FavoriteGroup::class, Notebook::class, SharedNotebookEntity::class], 
+    version = 17, // Incrementado para forzar la migración tras añadir isPinned a Notebook
     exportSchema = false
 )
 abstract class ReminderDatabase : RoomDatabase() {
@@ -15,6 +15,8 @@ abstract class ReminderDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun sharedNoteDao(): SharedNoteDao
     abstract fun favoriteGroupDao(): FavoriteGroupDao
+    abstract fun notebookDao(): NotebookDao
+    abstract fun sharedNotebookDao(): SharedNotebookDao
 
     companion object {
         @Volatile

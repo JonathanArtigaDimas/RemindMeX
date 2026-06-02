@@ -18,7 +18,11 @@ data class Note(
     val audioPath: String? = null,
     val isQuickNote: Boolean = false,
     val isPinned: Boolean = false,
-    val color: Long = 0xFF1E293B
+    val color: Long = 0xFF1E293B,
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val notebookId: Long? = null,
+    val needsSync: Boolean = false // Marcador para subida offline
 )
 
 @Entity(tableName = "tags")

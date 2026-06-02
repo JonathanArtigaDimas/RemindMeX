@@ -6,12 +6,20 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NoteDao {
     @Transaction
-    @Query("SELECT * FROM notes ORDER BY isPinned DESC, createdAt DESC")
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 ORDER BY isPinned DESC, createdAt DESC")
     fun getAllNotesWithTags(): Flow<List<NoteWithTags>>
 
     @Transaction
-    @Query("SELECT * FROM notes WHERE title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%' ORDER BY isPinned DESC, createdAt DESC")
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY isPinned DESC, createdAt DESC")
     fun searchNotes(query: String): Flow<List<NoteWithTags>>
+
+    @Transaction
+    @Query("SELECT * FROM notes WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedNotes(): Flow<List<NoteWithTags>>
+
+    @Transaction
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND notebookId = :notebookId ORDER BY isPinned DESC, createdAt DESC")
+    fun getNotesByNotebook(notebookId: Long): Flow<List<NoteWithTags>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: Note): Long
@@ -21,6 +29,9 @@ interface NoteDao {
 
     @Delete
     suspend fun deleteNote(note: Note)
+
+    @Query("DELETE FROM notes WHERE isDeleted = 1 AND deletedAt < :timestamp")
+    suspend fun cleanupOldDeletedNotes(timestamp: Long)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTag(tag: Tag)

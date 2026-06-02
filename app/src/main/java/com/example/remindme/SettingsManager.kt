@@ -32,6 +32,25 @@ class SettingsManager(context: Context) {
     private val _isFontItalic = MutableStateFlow(prefs.getBoolean("is_font_italic", false))
     val isFontItalic: StateFlow<Boolean> = _isFontItalic
 
+    private val _isSpecialMode = MutableStateFlow(prefs.getBoolean("is_special_mode", false))
+    val isSpecialMode: StateFlow<Boolean> = _isSpecialMode
+
+    // Fondos de pantalla personalizados
+    private val _homeBg = MutableStateFlow(prefs.getString("home_bg", null))
+    val homeBg: StateFlow<String?> = _homeBg
+
+    private val _notesBg = MutableStateFlow(prefs.getString("notes_bg", null))
+    val notesBg: StateFlow<String?> = _notesBg
+
+    private val _teamsBg = MutableStateFlow(prefs.getString("teams_bg", null))
+    val teamsBg: StateFlow<String?> = _teamsBg
+
+    private val _settingsBg = MutableStateFlow(prefs.getString("settings_bg", null))
+    val settingsBg: StateFlow<String?> = _settingsBg
+
+    private val _bgOpacity = MutableStateFlow(prefs.getFloat("bg_opacity", 0.5f))
+    val bgOpacity: StateFlow<Float> = _bgOpacity
+
     fun setTheme(theme: String) {
         prefs.edit().putString("theme", theme).apply()
         _currentTheme.value = theme
@@ -70,6 +89,36 @@ class SettingsManager(context: Context) {
     fun setFontItalic(italic: Boolean) {
         prefs.edit().putBoolean("is_font_italic", italic).apply()
         _isFontItalic.value = italic
+    }
+
+    fun setSpecialMode(enabled: Boolean) {
+        prefs.edit().putBoolean("is_special_mode", enabled).apply()
+        _isSpecialMode.value = enabled
+    }
+
+    fun setHomeBg(uri: String?) {
+        prefs.edit().putString("home_bg", uri).apply()
+        _homeBg.value = uri
+    }
+
+    fun setNotesBg(uri: String?) {
+        prefs.edit().putString("notes_bg", uri).apply()
+        _notesBg.value = uri
+    }
+
+    fun setTeamsBg(uri: String?) {
+        prefs.edit().putString("teams_bg", uri).apply()
+        _teamsBg.value = uri
+    }
+
+    fun setSettingsBg(uri: String?) {
+        prefs.edit().putString("settings_bg", uri).apply()
+        _settingsBg.value = uri
+    }
+
+    fun setBgOpacity(opacity: Float) {
+        prefs.edit().putFloat("bg_opacity", opacity).apply()
+        _bgOpacity.value = opacity
     }
 
     fun resetToDefault() {

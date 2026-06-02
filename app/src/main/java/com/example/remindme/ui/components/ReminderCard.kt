@@ -54,12 +54,12 @@ fun ReminderCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(20.dp))
             .graphicsLayer { alpha = contentAlpha }
             .border(
-                width = 2.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(20.dp)
             )
             .clickable { onEdit() },

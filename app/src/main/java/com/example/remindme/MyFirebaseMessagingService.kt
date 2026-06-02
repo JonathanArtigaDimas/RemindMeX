@@ -13,49 +13,40 @@ import com.google.firebase.messaging.RemoteMessage
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        // Solo mostramos la notificación si viene un mensaje de notificación o datos
-        remoteMessage.notification?.let {
-            sendNotification(it.title ?: "Nueva Nota", it.body ?: "")
-        } ?: remoteMessage.data["body"]?.let { body ->
-            val title = remoteMessage.data["title"] ?: "Nueva Nota"
-            sendNotification(title, body)
-        }
+        val title = remoteMessage.notification?.title ?: "Nueva actividad en el equipo"
+        val body = remoteMessage.notification?.body ?: "Tienes un nuevo mensaje o nota compartida."
+        
+        showNotification(title, body)
     }
 
-    private fun sendNotification(title: String, body: String) {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val channelId = "shared_notes_channel"
-        val notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher) // Usamos el icono de la app por ahora
-            .setContentTitle(title)
-            .setContentText(body)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-
+    private fun showNotification(title: String, body: String) {
+        val channelId = "team_updates"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Notas Compartidas",
-                NotificationManager.IMPORTANCE_HIGH
+                "Actualizaciones de Equipo",
+                NotificationManager.IMPORTANCE_DEFAULT
             )
             notificationManager.createNotificationChannel(channel)
         }
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
-    }
+        val intent = Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-    override fun onNewToken(token: String) {
-        // En el futuro podríamos guardar el token por usuario si queremos notificaciones dirigidas
-        // Por ahora usamos suscripción por temas (topics) que es más eficiente para grupos
+        val notificationBuilder = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_launcher_foreground) // Asegúrate de que exista
+            .setContentTitle(title)
+            .setContentText(body)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
     }
 }

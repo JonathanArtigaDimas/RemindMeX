@@ -29,6 +29,9 @@ class SharedNotesViewModel(
 
     init {
         _currentGroupId.value?.let { startSync(it) }
+        viewModelScope.launch {
+            repository.syncUserProfile()
+        }
     }
 
     fun login(email: String, password: String) {
@@ -104,11 +107,134 @@ class SharedNotesViewModel(
             initialValue = emptyList()
         )
 
+    val sharedNotebooksFromRoom = _currentGroupId
+        .flatMapLatest { groupId ->
+            if (groupId == null) flowOf(emptyList())
+            else repository.getSharedNotebooksFromRoom(groupId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _selectedNotebookId = MutableStateFlow<String?>(null)
+    val selectedNotebookId = _selectedNotebookId.asStateFlow()
+
+    private val _selectedInternalTab = MutableStateFlow(0) // 0: Notas, 1: Chat
+    val selectedInternalTab = _selectedInternalTab.asStateFlow()
+
+    fun setSelectedInternalTab(index: Int) {
+        _selectedInternalTab.value = index
+    }
+
+    fun setSelectedNotebook(notebookId: String?) {
+        _selectedNotebookId.value = if (_selectedNotebookId.value == notebookId) null else notebookId
+    }
+
+    fun createSharedNotebook(name: String, color: Long) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.createSharedNotebook(groupId, name, color)
+        }
+    }
+
+    fun deleteSharedNotebook(notebookId: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.deleteSharedNotebook(groupId, notebookId)
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentGroupMembers = _currentGroupId
+        .flatMapLatest { groupId ->
+            if (groupId == null) flowOf(emptyList())
+            else repository.getGroupMembers(groupId)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    fun updateMemberRole(targetUid: String, newRole: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.updateMemberRole(groupId, targetUid, newRole)
+        }
+    }
+
+    fun removeMember(targetUid: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.removeMember(groupId, targetUid)
+        }
+    }
+
+    fun addComment(noteId: String, text: String) {
+        viewModelScope.launch {
+            repository.addComment(noteId, text)
+        }
+    }
+
+    fun editComment(noteId: String, commentId: String, newText: String) {
+        viewModelScope.launch {
+            repository.editComment(noteId, commentId, newText)
+        }
+    }
+
+    fun deleteComment(noteId: String, commentId: String) {
+        viewModelScope.launch {
+            repository.deleteComment(noteId, commentId)
+        }
+    }
+
+    val currentGroupMessages = _currentGroupId
+        .flatMapLatest { groupId ->
+            if (groupId == null) flowOf(emptyList())
+            else repository.getGroupMessages(groupId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun sendGroupMessage(text: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.sendGroupMessage(groupId, text)
+        }
+    }
+
+    fun editGroupMessage(messageId: String, newText: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.editGroupMessage(groupId, messageId, newText)
+        }
+    }
+
+    fun deleteGroupMessage(messageId: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.deleteGroupMessage(groupId, messageId)
+        }
+    }
+
+    fun updateAnnouncement(newAnnouncement: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            _uiState.value = SharedNotesUiState.Loading
+            val result = repository.updateGroupAnnouncement(groupId, newAnnouncement)
+            if (result.isSuccess) {
+                _uiState.value = SharedNotesUiState.Success
+            } else {
+                _uiState.value = SharedNotesUiState.Error(result.exceptionOrNull()?.message ?: "Error al actualizar anuncio")
+            }
+        }
+    }
+
     fun selectGroup(groupId: String) {
         _currentGroupId.value = groupId.ifEmpty { null }
         if (groupId.isNotEmpty()) {
             prefs.edit().putString(KEY_GROUP_ID, groupId).apply()
-            viewModelScope.launch { repository.addFavoriteGroup(groupId) }
+            viewModelScope.launch { 
+                repository.addFavoriteGroup(groupId)
+                com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic("group_$groupId")
+            }
             startSync(groupId)
         } else {
             prefs.edit().remove(KEY_GROUP_ID).apply()
@@ -118,6 +244,7 @@ class SharedNotesViewModel(
     fun removeFavorite(groupId: String) {
         viewModelScope.launch {
             repository.removeFavoriteGroup(groupId)
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().unsubscribeFromTopic("group_$groupId")
         }
     }
 
@@ -183,28 +310,39 @@ class SharedNotesViewModel(
         }
     }
 
-    fun addNote(title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B) {
+    fun addNote(title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, notebookId: String? = null) {
         val groupId = _currentGroupId.value ?: return
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             _uiState.value = SharedNotesUiState.Loading
             
+            // Verificamos conexión antes de subir
+            val isOnline = isNetworkAvailable(context)
+
             val finalImagePath = if (imagePath?.startsWith("/") == true) {
-                val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
-                if (uploadedUrl == null) {
-                    _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión y reglas de Firebase Storage.")
-                    return@launch
+                if (isOnline) {
+                    val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
+                    if (uploadedUrl == null) {
+                        _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión.")
+                        return@launch
+                    }
+                    uploadedUrl
+                } else {
+                    imagePath // Mantenemos ruta local si estamos offline
                 }
-                uploadedUrl
             } else imagePath
 
             val finalAudioPath = if (audioPath?.startsWith("/") == true) {
-                val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
-                if (uploadedUrl == null) {
-                    _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
-                    return@launch
+                if (isOnline) {
+                    val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
+                    if (uploadedUrl == null) {
+                        _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
+                        return@launch
+                    }
+                    uploadedUrl
+                } else {
+                    audioPath
                 }
-                uploadedUrl
             } else audioPath
 
             val noteId = java.util.UUID.randomUUID().toString()
@@ -217,38 +355,70 @@ class SharedNotesViewModel(
                 authorName = user.displayName ?: "Anon",
                 imagePath = finalImagePath,
                 audioPath = finalAudioPath,
-                color = color
+                color = color,
+                notebookId = notebookId ?: _selectedNotebookId.value // Si no se pasa, usamos el actual de la UI
             )
-            repository.saveSharedNote(note)
+            
+            if (isOnline) {
+                repository.saveSharedNote(note)
+            } else {
+                repository.saveSharedNote(note)
+            }
+            
             _uiState.value = SharedNotesUiState.Success
         }
     }
 
-    fun shareExistingNote(groupId: String, title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, isPinned: Boolean = false, noteId: String? = null) {
+    private fun isNetworkAvailable(context: android.content.Context): Boolean {
+        val connectivityManager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val nw = connectivityManager.activeNetwork ?: return false
+        val actNw = connectivityManager.getNetworkCapabilities(nw) ?: return false
+        return when {
+            actNw.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> true
+            actNw.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+            else -> false
+        }
+    }
+
+    fun shareExistingNote(groupId: String, title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, isPinned: Boolean = false, noteId: String? = null, notebookId: String? = null) {
         viewModelScope.launch {
             _uiState.value = SharedNotesUiState.Loading
             
+            // Verificamos conexión antes de subir
+            val isOnline = isNetworkAvailable(context)
+
             val finalImagePath = if (imagePath?.startsWith("/") == true) {
-                val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
-                if (uploadedUrl == null) {
-                    _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión y reglas de Firebase Storage.")
-                    return@launch
+                if (isOnline) {
+                    val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
+                    if (uploadedUrl == null) {
+                        _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión.")
+                        return@launch
+                    }
+                    uploadedUrl
+                } else {
+                    imagePath // Mantenemos ruta local si estamos offline
                 }
-                uploadedUrl
             } else imagePath
 
             val finalAudioPath = if (audioPath?.startsWith("/") == true) {
-                val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
-                if (uploadedUrl == null) {
-                    _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
-                    return@launch
+                if (isOnline) {
+                    val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
+                    if (uploadedUrl == null) {
+                        _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
+                        return@launch
+                    }
+                    uploadedUrl
+                } else {
+                    audioPath
                 }
-                uploadedUrl
             } else audioPath
 
             val finalNoteId = noteId ?: java.util.UUID.randomUUID().toString()
             val user = repository.getCurrentUser() 
             
+            // CRÍTICO: Si notebookId es nulo, intentamos obtener el de la UI si el usuario está dentro de una carpeta
+            val finalNotebookId = notebookId ?: _selectedNotebookId.value
+
             val note = NoteFirestore(
                 noteId = finalNoteId,
                 groupId = groupId,
@@ -259,7 +429,8 @@ class SharedNotesViewModel(
                 imagePath = finalImagePath,
                 audioPath = finalAudioPath,
                 color = color,
-                isPinned = isPinned
+                isPinned = isPinned,
+                notebookId = finalNotebookId
             )
             
             repository.saveSharedNote(note)

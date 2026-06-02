@@ -105,16 +105,8 @@ object ReminderScheduler {
         val calendar = Calendar.getInstance().apply { timeInMillis = startTime }
         val now = Calendar.getInstance()
         
-        // Si el tiempo base ya pasó o es "ahora", avanzamos al menos un paso
-        if (calendar.timeInMillis <= now.timeInMillis) {
-            when (repetition) {
-                "Diario" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
-                "Semanal" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
-                "Mensual" -> calendar.add(Calendar.MONTH, 1)
-            }
-        }
-
-        // Buscamos la siguiente fecha válida que esté en el futuro
+        // Si el tiempo base es "ahora" o en el pasado, buscamos la siguiente ocurrencia real.
+        // También si es semanal y el día actual no es válido.
         var safetyCount = 0
         while (calendar.timeInMillis <= now.timeInMillis || (repetition == "Semanal" && !isValidDay(calendar, repeatDays))) {
             when (repetition) {
@@ -124,7 +116,7 @@ object ReminderScheduler {
                 else -> break
             }
             safetyCount++
-            if (safetyCount > 366) break // Seguridad para evitar bucles infinitos
+            if (safetyCount > 366 * 2) break // Seguridad para evitar bucles infinitos (cubriendo años bisiestos)
         }
 
         return calendar.timeInMillis

@@ -15,5 +15,7 @@ data class Reminder(
     val repetition: String? = "Sin repetición",
     val repeatDays: String? = null, // Store as "1,2,3" for Mon, Tue, Wed...
     val isCompleted: Boolean = false,
-    val type: String = "Recordatorio" // "Recordatorio" o "Alarma"
+    val type: String = "Recordatorio", // "Recordatorio" o "Alarma"
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null
 )

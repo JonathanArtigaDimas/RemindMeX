@@ -60,6 +60,7 @@ dependencies {
     // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.firebase.auth.ktx)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore.ktx)
@@ -67,6 +68,7 @@ dependencies {
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.googleid)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation("com.google.code.gson:gson:2.10.1")
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

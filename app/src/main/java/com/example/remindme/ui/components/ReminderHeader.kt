@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.sp
 import java.util.Calendar
 
 @Composable
-fun ReminderHeader(reminderCount: Int) {
+fun ReminderHeader(reminderCount: Int, isSpecialMode: Boolean = false) {
     val calendar = Calendar.getInstance()
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     
@@ -32,7 +32,7 @@ fun ReminderHeader(reminderCount: Int) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "$emoji $greeting Amor ❤️", 
+                text = if (isSpecialMode) "$emoji $greeting Amor ❤️" else "$emoji $greeting",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary
             )

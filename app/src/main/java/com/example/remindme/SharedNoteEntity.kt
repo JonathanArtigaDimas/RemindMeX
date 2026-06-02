@@ -16,5 +16,8 @@ data class SharedNoteEntity(
     val imagePath: String? = null,
     val audioPath: String? = null,
     val color: Long = 0xFF1E293B,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val commentsJson: String = "[]",
+    val needsSync: Boolean = false,
+    val notebookId: String? = null
 )

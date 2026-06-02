@@ -53,57 +53,59 @@ fun SettingsScreen(
         activeSection = null
     }
 
-    val backgroundColor = MaterialTheme.colorScheme.background
+    val settingsBg by settingsManager.settingsBg.collectAsState()
+    val bgOpacity by settingsManager.bgOpacity.collectAsState()
 
-    Scaffold(
-        topBar = {
-            Column(modifier = Modifier.background(backgroundColor)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (activeSection != null) {
-                        IconButton(onClick = { 
-                            activeSection = if (activeSection == "SoundLibrary") "Sonidos" else null 
-                        }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack, 
-                                contentDescription = "Volver",
-                                tint = MaterialTheme.colorScheme.onBackground
-                            )
+    BackgroundWrapper(imageUri = settingsBg, opacity = bgOpacity) {
+        Scaffold(
+            topBar = {
+                Column(modifier = Modifier.background(Color.Transparent)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (activeSection != null) {
+                            IconButton(onClick = { 
+                                activeSection = if (activeSection == "SoundLibrary") "Sonidos" else null 
+                            }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack, 
+                                    contentDescription = "Volver",
+                                    tint = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
                         }
+                        Text(
+                            text = when (activeSection) {
+                                "Temas" -> "🎨 Temas"
+                                "Tipografías" -> "Tipografías"
+                                "Sonidos" -> "🔊 Sonidos"
+                                "Sistema" -> "⚙️ Sistema"
+                                "SoundLibrary" -> "Biblioteca de Sonidos"
+                                else -> "🎨 Personalización"
+                            },
+                            color = MaterialTheme.colorScheme.onBackground,
+                            style = MaterialTheme.typography.headlineMedium,
+                            modifier = Modifier.padding(start = if (activeSection == null) 0.dp else 8.dp)
+                        )
                     }
-                    Text(
-                        text = when (activeSection) {
-                            "Temas" -> "🎨 Temas"
-                            "Tipografías" -> "Tipografías"
-                            "Sonidos" -> "🔊 Sonidos"
-                            "Sistema" -> "⚙️ Sistema"
-                            "SoundLibrary" -> "Biblioteca de Sonidos"
-                            else -> "🎨 Personalización"
-                        },
-                        color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(start = if (activeSection == null) 0.dp else 8.dp)
-                    )
                 }
-            }
-        },
-        containerColor = backgroundColor
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            Column(
+            },
+            containerColor = Color.Transparent
+        ) { innerPadding ->
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding)
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                 Spacer(Modifier.height(8.dp))
 
                 AnimatedContent(
@@ -176,6 +178,96 @@ fun SettingsScreen(
                                                 }
                                                 if (rowItems.size < 2) {
                                                     Spacer(modifier = Modifier.weight(1f))
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(32.dp))
+                                    SettingsSectionHeader("FONDOS PERSONALIZADOS")
+                                    
+                                    val bgOpacity by settingsManager.bgOpacity.collectAsState()
+                                    val homeBg by settingsManager.homeBg.collectAsState()
+                                    val notesBg by settingsManager.notesBg.collectAsState()
+                                    val teamsBg by settingsManager.teamsBg.collectAsState()
+                                    val settingsBg by settingsManager.settingsBg.collectAsState()
+
+                                    val homePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                                        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                                    ) { uri -> uri?.let { settingsManager.setHomeBg(it.toString()) } }
+
+                                    val notesPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                                        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                                    ) { uri -> uri?.let { settingsManager.setNotesBg(it.toString()) } }
+
+                                    val teamsPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                                        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                                    ) { uri -> uri?.let { settingsManager.setTeamsBg(it.toString()) } }
+
+                                    val settingsPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                                        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                                    ) { uri -> uri?.let { settingsManager.setSettingsBg(it.toString()) } }
+
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        shape = RoundedCornerShape(24.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                            Text("Ajustar opacidad del fondo", style = MaterialTheme.typography.titleSmall)
+                                            Slider(
+                                                value = bgOpacity,
+                                                onValueChange = { settingsManager.setBgOpacity(it) },
+                                                valueRange = 0.1f..0.9f,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+
+                                            val bgItems = listOf(
+                                                "Inicio" to (homeBg to homePicker),
+                                                "Notas" to (notesBg to notesPicker),
+                                                "Equipos" to (teamsBg to teamsPicker),
+                                                "Ajustes" to (settingsBg to settingsPicker)
+                                            )
+
+                                            bgItems.forEach { (label, data) ->
+                                                val (bg, picker) = data
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                                        Text(if (bg != null) "Imagen seleccionada" else "Color sólido", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                                    }
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        if (bg != null) {
+                                                            IconButton(onClick = {
+                                                                when(label) {
+                                                                    "Inicio" -> settingsManager.setHomeBg(null)
+                                                                    "Notas" -> settingsManager.setNotesBg(null)
+                                                                    "Equipos" -> settingsManager.setTeamsBg(null)
+                                                                    "Ajustes" -> settingsManager.setSettingsBg(null)
+                                                                }
+                                                            }) {
+                                                                Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha = 0.5f))
+                                                            }
+                                                        }
+                                                        Button(
+                                                            onClick = { picker.launch("image/*") },
+                                                            shape = RoundedCornerShape(12.dp)
+                                                        ) {
+                                                            Text(if (bg != null) "Cambiar" else "Elegir")
+                                                        }
+                                                    }
+                                                }
+                                                if (bg != null) {
+                                                    coil.compose.AsyncImage(
+                                                        model = bg,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxWidth().height(80.dp).clip(RoundedCornerShape(12.dp)),
+                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                    )
                                                 }
                                             }
                                         }
@@ -459,6 +551,42 @@ fun SettingsScreen(
                                                 Spacer(Modifier.width(8.dp))
                                                 Text("Limpiar completados")
                                             }
+
+                                            // Opción de Copia de Seguridad
+                                            val context = androidx.compose.ui.platform.LocalContext.current
+                                            val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                                                contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+                                            ) { uri ->
+                                                uri?.let { com.example.remindme.BackupUtils.exportNotesToJson(context, it) }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { exportLauncher.launch("RemindMe_Backup_${System.currentTimeMillis()}.json") },
+                                                modifier = Modifier.fillMaxWidth(0.8f).height(48.dp),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                                            ) {
+                                                Icon(Icons.Default.Backup, null, tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Copia de Seguridad (Exportar)")
+                                            }
+
+                                            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                                                contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                                            ) { uri ->
+                                                uri?.let { com.example.remindme.BackupUtils.importNotesFromJson(context, it) }
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = { importLauncher.launch("application/json") },
+                                                modifier = Modifier.fillMaxWidth(0.8f).height(48.dp),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                                            ) {
+                                                Icon(Icons.Default.FileUpload, null, tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Restaurar desde JSON (Importar)")
+                                            }
                                             
                                             OutlinedButton(
                                                 onClick = onResetAll,
@@ -473,6 +601,30 @@ fun SettingsScreen(
                                                 Spacer(Modifier.width(8.dp))
                                                 Text("Restablecer todo")
                                             }
+
+                                            // Sección Código Especial
+                                            Spacer(Modifier.height(24.dp))
+                                            var specialCode by remember { mutableStateOf("") }
+                                            val isSpecialActive by settingsManager.isSpecialMode.collectAsState()
+                                            
+                                            OutlinedTextField(
+                                                value = specialCode,
+                                                onValueChange = { 
+                                                    specialCode = it.uppercase()
+                                                    if (specialCode == "MYLENE") {
+                                                        settingsManager.setSpecialMode(true)
+                                                        specialCode = ""
+                                                    } else if (specialCode == "CLEAN") {
+                                                        settingsManager.setSpecialMode(false)
+                                                        specialCode = ""
+                                                    }
+                                                },
+                                                label = { Text("Código de sistema") },
+                                                modifier = Modifier.fillMaxWidth(0.8f),
+                                                shape = RoundedCornerShape(12.dp),
+                                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                                singleLine = true
+                                            )
                                         }
                                     }
                                 }
@@ -483,9 +635,9 @@ fun SettingsScreen(
                 
                 Spacer(Modifier.height(48.dp))
                 
-                // Version Footer pushed to bottom
+                // Version Footer
                 Text(
-                    text = "RemindMe v1.0.4",
+                    text = "RemindMe v1.0.5",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp),
@@ -493,27 +645,31 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.bodySmall
                 )
-                Spacer(Modifier.height(20.dp))
-
-                Text(
-                    text = buildAnnotatedString {
-                        append("⚖️ Licda. Mylene Dánae Castro de Artiga ")
-                        withStyle(style = SpanStyle(color = WineColor)) {
-                            append("♥️")
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-                )
+                
+                val isSpecialActive by settingsManager.isSpecialMode.collectAsState()
+                if (isSpecialActive) {
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        text = buildAnnotatedString {
+                            append("⚖️ Licda. Mylene Dánae Castro de Artiga ")
+                            withStyle(style = SpanStyle(color = Color(0xFF991B1B))) { // WineColor replacement
+                                append("♥️")
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
                 
                 Spacer(Modifier.height(80.dp)) // Padding for bottom nav
             }
         }
     }
+}
 }
 
 @Composable

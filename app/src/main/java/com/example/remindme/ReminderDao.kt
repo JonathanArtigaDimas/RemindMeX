@@ -10,11 +10,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ReminderDao {
-    @Query("SELECT * FROM reminders ORDER BY id DESC")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllReminders(): Flow<List<Reminder>>
 
-    @Query("SELECT * FROM reminders")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0")
     suspend fun getAllRemindersList(): List<Reminder>
+
+    @Query("SELECT * FROM reminders WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedReminders(): Flow<List<Reminder>>
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getReminderById(id: Int): Reminder?
@@ -25,9 +28,9 @@ interface ReminderDao {
     @Update
     suspend fun update(reminder: Reminder)
 
-    @Query("DELETE FROM reminders WHERE id = :id")
-    suspend fun deleteById(id: Int)
-
     @Delete
     suspend fun delete(reminder: Reminder)
+
+    @Query("DELETE FROM reminders WHERE isDeleted = 1 AND deletedAt < :timestamp")
+    suspend fun cleanupOldDeletedReminders(timestamp: Long)
 }

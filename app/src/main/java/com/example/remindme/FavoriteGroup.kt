@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class FavoriteGroup(
     @PrimaryKey val groupId: String,
     val name: String,
-    val lastAccessed: Long = System.currentTimeMillis()
+    val lastAccessed: Long = System.currentTimeMillis(),
+    val lastCheckedTimestamp: Long = System.currentTimeMillis()
 )

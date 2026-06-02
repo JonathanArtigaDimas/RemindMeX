@@ -25,11 +25,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.remindme.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Objects
@@ -41,12 +43,27 @@ fun NoteEditorScreen(
     isQuickNote: Boolean = false,
     initialIsShared: Boolean = false,
     availableTags: List<Tag> = emptyList(),
+    availableNotebooks: List<Notebook> = emptyList(),
+    sharedNotebooks: List<SharedNotebookEntity> = emptyList(),
     currentGroupId: String? = null,
+    commentsJson: String = "[]",
     onDismiss: () -> Unit,
     onSave: (Note, List<Tag>, Boolean) -> Unit,
-    onDelete: (Note) -> Unit
+    onDelete: (Note) -> Unit,
+    onAddComment: (String, String) -> Unit = { _, _ -> },
+    onEditComment: (String, String, String) -> Unit = { _, _, _ -> },
+    onDeleteComment: (String, String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
+    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+    val gson = remember { com.google.gson.Gson() }
+    val commentType = remember { object : com.google.gson.reflect.TypeToken<List<NoteComment>>() {}.type }
+    val comments = remember(commentsJson) { 
+        gson.fromJson<List<NoteComment>>(commentsJson, commentType) ?: emptyList()
+    }
+    var commentText by remember { mutableStateOf("") }
+    var editingCommentId by remember { mutableStateOf<String?>(null) }
+
     var title by remember { 
         mutableStateOf(
             if (noteWithTags?.note?.isQuickNote == true && noteWithTags.note.title.isEmpty()) {
@@ -71,6 +88,7 @@ fun NoteEditorScreen(
     var selectedColor by remember { mutableStateOf(noteWithTags?.note?.color ?: defaultNoteColor) }
     
     var isShared by remember { mutableStateOf(initialIsShared) }
+    var selectedNotebookId by remember { mutableStateOf(noteWithTags?.note?.notebookId) }
 
     val initialTags = noteWithTags?.tags?.map { it.name }?.toSet() ?: emptySet()
     var selectedTags by remember { mutableStateOf(initialTags) }
@@ -170,7 +188,8 @@ fun NoteEditorScreen(
                                     imagePath = imagePath,
                                     audioPath = audioPath,
                                     color = selectedColor,
-                                    isQuickNote = isQuickNote
+                                    isQuickNote = isQuickNote,
+                                    notebookId = selectedNotebookId
                                 )
                                 onSave(note, selectedTags.map { Tag(it) }, isShared)
                                 onDismiss()
@@ -294,7 +313,7 @@ fun NoteEditorScreen(
 
                     // Tags Section
                     Text(
-                        text = "Etiquetas (Opcional):",
+                        text = "Etiquetas:",
                         color = MaterialTheme.colorScheme.secondary,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
@@ -307,7 +326,6 @@ fun NoteEditorScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Add Custom Tag Button
                         Surface(
                             modifier = Modifier.size(40.dp).clickable { showAddTagDialog = true },
                             color = MaterialTheme.colorScheme.surface,
@@ -331,6 +349,55 @@ fun NoteEditorScreen(
                                     }
                                 }
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Notebooks Section
+                    Text(
+                        text = "Cuaderno:",
+                        color = MaterialTheme.colorScheme.secondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isShared) {
+                            sharedNotebooks.forEach { notebook ->
+                                FilterChip(
+                                    selected = selectedNotebookId?.toString() == notebook.id,
+                                    onClick = { selectedNotebookId = if (selectedNotebookId?.toString() == notebook.id) null else notebook.id.toLongOrNull() ?: notebook.id.hashCode().toLong() },
+                                    label = { Text(notebook.name) },
+                                    leadingIcon = { Icon(Icons.Default.Book, null, Modifier.size(16.dp)) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        selectedContainerColor = Color(notebook.color),
+                                        selectedLabelColor = Color.White,
+                                        selectedLeadingIconColor = Color.White
+                                    )
+                                )
+                            }
+                        } else {
+                            availableNotebooks.forEach { notebook ->
+                                FilterChip(
+                                    selected = selectedNotebookId == notebook.id,
+                                    onClick = { selectedNotebookId = if (selectedNotebookId == notebook.id) null else notebook.id },
+                                    label = { Text(notebook.name) },
+                                    leadingIcon = { Icon(Icons.Default.Book, null, Modifier.size(16.dp)) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        selectedContainerColor = Color(notebook.color),
+                                        selectedLabelColor = Color.White,
+                                        selectedLeadingIconColor = Color.White
+                                    )
+                                )
+                            }
                         }
                     }
 
@@ -409,6 +476,176 @@ fun NoteEditorScreen(
                         ),
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                     )
+
+                    if (isShared && noteWithTags != null) {
+                        Spacer(modifier = Modifier.height(48.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ChatBubbleOutline, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Conversación del Equipo",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        if (comments.isEmpty()) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    "No hay comentarios aún. ¡Sé el primero en participar!",
+                                    modifier = Modifier.padding(24.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            comments.sortedBy { it.createdAt }.forEach { comment ->
+                                val commentTime = java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(comment.createdAt))
+                                val isMyComment = comment.authorId == currentUser?.uid
+                                var showCommentOptions by remember { mutableStateOf(false) }
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp)
+                                        .background(
+                                            if (isMyComment) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                            else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f), 
+                                            RoundedCornerShape(16.dp)
+                                        )
+                                        .combinedClickable(
+                                            onClick = { },
+                                            onLongClick = { if (isMyComment) showCommentOptions = true }
+                                        )
+                                        .padding(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isMyComment) "Tú" else comment.authorName,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isMyComment) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = commentTime,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                            )
+                                            if (isMyComment) {
+                                                Box {
+                                                    DropdownMenu(
+                                                        expanded = showCommentOptions,
+                                                        onDismissRequest = { showCommentOptions = false }
+                                                    ) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("Editar") },
+                                                            leadingIcon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp)) },
+                                                            onClick = {
+                                                                editingCommentId = comment.commentId
+                                                                commentText = comment.text
+                                                                showCommentOptions = false
+                                                            }
+                                                        )
+                                                        DropdownMenuItem(
+                                                            text = { Text("Borrar", color = MaterialTheme.colorScheme.error) },
+                                                            leadingIcon = { Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) },
+                                                            onClick = {
+                                                                onDeleteComment("", comment.commentId) // noteId será manejado en MainActivity
+                                                                showCommentOptions = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = comment.text,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isMyComment) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = commentText,
+                                    onValueChange = { commentText = it },
+                                    placeholder = { 
+                                        Text(
+                                            if (editingCommentId != null) "Editando comentario..." else "Escribir a tu equipo...", 
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                        ) 
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        cursorColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    maxLines = 5,
+                                    trailingIcon = {
+                                        if (editingCommentId != null) {
+                                            IconButton(onClick = { editingCommentId = null; commentText = "" }) {
+                                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                )
+                                IconButton(
+                                    onClick = {
+                                        if (commentText.isNotBlank()) {
+                                            if (editingCommentId != null) {
+                                                onEditComment("", editingCommentId!!, commentText)
+                                                editingCommentId = null
+                                            } else {
+                                                onAddComment("", commentText)
+                                            }
+                                            commentText = ""
+                                        }
+                                    },
+                                    enabled = commentText.isNotBlank()
+                                ) {
+                                    Icon(
+                                        if (editingCommentId != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send, 
+                                        null, 
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
                     
                     Spacer(modifier = Modifier.height(100.dp)) // Padding for bottom
                 }

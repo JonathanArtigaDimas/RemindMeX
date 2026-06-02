@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.remindme.SoundManager
@@ -181,27 +182,34 @@ fun NewReminderModal(
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { selectedType = type },
                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        border = BorderStroke(
+                            width = 1.5.dp,
+                            color = if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                        ),
+                        tonalElevation = if (isSelected) 4.dp else 0.dp
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        Column(
+                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                if (type == "Alarma") Icons.Default.Alarm else Icons.Default.Notifications,
-                                null,
+                                imageVector = if (type == "Alarma") Icons.Default.Alarm else Icons.Default.NotificationsActive,
+                                contentDescription = null,
                                 tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.height(6.dp))
                             Text(
-                                type,
+                                text = type,
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -335,7 +343,31 @@ fun NewReminderModal(
                 onClick = { 
                     if (isTitleValid) {
                         val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
-                        onSave(title, description, formattedDate, formattedTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString, selectedType)
+                        
+                        // Intelligent logic: Calculate the actual first occurrence
+                        var finalDate = formattedDate
+                        var finalTime = formattedTime
+                        
+                        if (selectedRepetition != "Sin repetición") {
+                            try {
+                                val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                                val initialDateTime = sdf.parse("$formattedDate $formattedTime")?.time ?: System.currentTimeMillis()
+                                
+                                val nextOccurrence = com.example.remindme.ReminderScheduler.getNextOccurrence(
+                                    initialDateTime, 
+                                    selectedRepetition, 
+                                    repeatDaysString
+                                )
+                                
+                                val nextCalendar = Calendar.getInstance().apply { timeInMillis = nextOccurrence }
+                                finalDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(nextCalendar.time)
+                                finalTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(nextCalendar.time)
+                            } catch (e: Exception) {
+                                // Fallback to user selections if calculation fails
+                            }
+                        }
+                        
+                        onSave(title, description, finalDate, finalTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString, selectedType)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp).height(56.dp),
@@ -520,8 +552,27 @@ fun DaySelector(selectedDays: Set<Int>, onToggle: (Set<Int>) -> Unit) {
 }
 
 @Composable
-fun SectionHeader(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+fun SectionHeader(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 24.dp, bottom = 12.dp)
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = text, 
+            color = MaterialTheme.colorScheme.secondary, 
+            fontSize = 14.sp, 
+            fontWeight = FontWeight.ExtraBold
+        )
+    }
 }
 
 @Composable
