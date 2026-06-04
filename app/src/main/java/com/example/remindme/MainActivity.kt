@@ -277,7 +277,8 @@ class MainActivity : ComponentActivity() {
                                                 val weekLaterCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 7) }
                                                 val monthLaterCal = Calendar.getInstance().apply { add(Calendar.MONTH, 1) }
 
-                                                val activeReminders = reminders.filter { !it.isDeleted }
+                                                val activeReminders = reminders.filter { !it.isDeleted && !it.isCompleted }
+                                                val completedReminders = reminders.filter { !it.isDeleted && it.isCompleted }.sortedByDescending { it.dateTime }
                                                 
                                                 val todayReminders = activeReminders.filter { 
                                                     it.dateTime.split(" ").getOrNull(0) == todayStr 
@@ -302,7 +303,7 @@ class MainActivity : ComponentActivity() {
                                                     } catch (e: Exception) { false }
                                                 }
 
-                                                if (activeReminders.isEmpty()) {
+                                                if (activeReminders.isEmpty() && completedReminders.isEmpty()) {
                                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                             Text("✨", fontSize = 64.sp)
@@ -407,6 +408,31 @@ class MainActivity : ComponentActivity() {
                                                                 ReminderCard(
                                                                     title = r.title,
                                                                     subtitle = r.dateTime.split(" ").getOrNull(0) ?: "",
+                                                                    tag = r.category ?: "General",
+                                                                    time = r.dateTime.split(" ").getOrNull(1) ?: "",
+                                                                    color = r.color ?: 0xFF3B82F6,
+                                                                    isCompleted = r.isCompleted,
+                                                                    onToggleComplete = {
+                                                                        lifecycleScope.launch {
+                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                        }
+                                                                    },
+                                                                    onEdit = {
+                                                                        editingReminder.value = r
+                                                                        showReminderEditor.value = true
+                                                                    },
+                                                                    onDelete = { reminderToDelete = r }
+                                                                )
+                                                            }
+                                                        }
+
+                                                        if (completedReminders.isNotEmpty()) {
+                                                            item { SectionHeader("COMPLETADOS", Icons.Default.CheckCircle) }
+                                                            items(completedReminders.size) { index ->
+                                                                val r = completedReminders[index]
+                                                                ReminderCard(
+                                                                    title = r.title,
+                                                                    subtitle = "¡Hecho!",
                                                                     tag = r.category ?: "General",
                                                                     time = r.dateTime.split(" ").getOrNull(1) ?: "",
                                                                     color = r.color ?: 0xFF3B82F6,

@@ -137,7 +137,7 @@ fun SoundLibraryContent(
                     subtitle = "Grabación de voz",
                     icon = Icons.Default.Mic,
                     isPlaying = playingSoundPath == path,
-                    onPlay = { SoundManager.playSound(context, path) },
+                    onPlay = { SoundManager.playSound(context, path, usage = android.media.AudioAttributes.USAGE_NOTIFICATION) },
                     onDelete = {
                         SoundManager.deleteSound(context, path)
                         customSounds = SoundManager.getCustomSounds(context)
@@ -169,7 +169,7 @@ fun SoundLibraryContent(
                     subtitle = "Audio importado",
                     icon = Icons.Default.MusicNote,
                     isPlaying = playingSoundPath == path,
-                    onPlay = { SoundManager.playSound(context, path) },
+                    onPlay = { SoundManager.playSound(context, path, usage = android.media.AudioAttributes.USAGE_NOTIFICATION) },
                     onDelete = {
                         SoundManager.deleteSound(context, path)
                         customSounds = SoundManager.getCustomSounds(context)
@@ -194,7 +194,7 @@ fun SoundLibraryContent(
                 subtitle = type,
                 icon = icon,
                 isPlaying = playingSoundPath == name,
-                onPlay = { SoundManager.playSound(context, name) },
+                onPlay = { SoundManager.playSound(context, name, usage = android.media.AudioAttributes.USAGE_NOTIFICATION) },
                 onDelete = null,
                 onClick = { onSoundSelected(name) }
             )

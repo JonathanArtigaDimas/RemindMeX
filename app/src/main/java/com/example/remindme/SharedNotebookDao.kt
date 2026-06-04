@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SharedNotebookDao {
-    @Query("SELECT * FROM shared_notebooks WHERE groupId = :groupId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM shared_notebooks WHERE groupId = :groupId ORDER BY isPinned DESC, createdAt DESC")
     fun getNotebooksByGroup(groupId: String): Flow<List<SharedNotebookEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

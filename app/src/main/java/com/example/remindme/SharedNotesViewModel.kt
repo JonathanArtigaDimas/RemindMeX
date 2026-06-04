@@ -142,6 +142,20 @@ class SharedNotesViewModel(
         }
     }
 
+    fun renameSharedNotebook(notebookId: String, newName: String) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.renameSharedNotebook(groupId, notebookId, newName)
+        }
+    }
+
+    fun toggleSharedNotebookPin(notebook: SharedNotebookEntity) {
+        val groupId = _currentGroupId.value ?: return
+        viewModelScope.launch {
+            repository.toggleSharedNotebookPin(groupId, notebook)
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentGroupMembers = _currentGroupId
         .flatMapLatest { groupId ->

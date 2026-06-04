@@ -9,5 +9,6 @@ data class SharedNotebookEntity(
     val groupId: String,
     val name: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val color: Long = 0xFF3B82F6
+    val color: Long = 0xFF3B82F6,
+    val isPinned: Boolean = false
 )

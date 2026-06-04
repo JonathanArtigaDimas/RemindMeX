@@ -25,6 +25,11 @@ object NotificationHelper {
                 val name = "Recordatorios$vibText ($soundPath)"
                 val importance = NotificationManager.IMPORTANCE_HIGH
                 
+                val alarmAttributes = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                
                 val channel = NotificationChannel(channelId, name, importance).apply {
                     description = "Notificaciones con sonido $soundPath"
                     this.enableVibration(enableVibration)
@@ -33,7 +38,7 @@ object NotificationHelper {
                     } else {
                         vibrationPattern = null
                     }
-                    setSound(soundUri, null)
+                    setSound(soundUri, alarmAttributes)
                 }
                 notificationManager.createNotificationChannel(channel)
             }

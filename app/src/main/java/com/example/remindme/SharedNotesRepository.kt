@@ -290,6 +290,26 @@ class SharedNotesRepository(
         Result.failure(e)
     }
 
+    // 9.1 Renombrar Cuaderno Compartido
+    suspend fun renameSharedNotebook(groupId: String, notebookId: String, newName: String): Result<Unit> = try {
+        firestore.collection("groups").document(groupId).collection("notebooks").document(notebookId)
+            .update("name", newName)
+            .await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
+    // 9.2 Alternar Pin de Cuaderno Compartido
+    suspend fun toggleSharedNotebookPin(groupId: String, notebook: SharedNotebookEntity): Result<Unit> = try {
+        firestore.collection("groups").document(groupId).collection("notebooks").document(notebook.id)
+            .update("isPinned", !notebook.isPinned)
+            .await()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     // 10. Obtener lista de miembros con sus perfiles
     fun getGroupMembers(groupId: String): Flow<List<UserFirestore>> = callbackFlow {
         val listener = firestore.collection("groups").document(groupId)

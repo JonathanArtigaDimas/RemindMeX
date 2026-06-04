@@ -26,7 +26,10 @@ data class SharedNotebookFirestore(
     val groupId: String = "",
     val name: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val color: Long = 0xFF3B82F6
+    val color: Long = 0xFF3B82F6,
+    @get:com.google.firebase.firestore.PropertyName("isPinned")
+    @set:com.google.firebase.firestore.PropertyName("isPinned")
+    var isPinned: Boolean = false
 )
 
 fun SharedNotebookFirestore.toEntity() = SharedNotebookEntity(
@@ -34,7 +37,8 @@ fun SharedNotebookFirestore.toEntity() = SharedNotebookEntity(
     groupId = groupId,
     name = name,
     createdAt = createdAt,
-    color = color
+    color = color,
+    isPinned = isPinned
 )
 
 data class NoteComment(
@@ -65,7 +69,9 @@ data class NoteFirestore(
     val imagePath: String? = null,
     val audioPath: String? = null,
     val color: Long = 0xFF1E293B,
-    val isPinned: Boolean = false,
+    @get:com.google.firebase.firestore.PropertyName("isPinned")
+    @set:com.google.firebase.firestore.PropertyName("isPinned")
+    var isPinned: Boolean = false,
     val comments: List<NoteComment> = emptyList(),
     val notebookId: String? = null
 )

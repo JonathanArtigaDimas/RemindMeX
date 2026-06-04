@@ -34,7 +34,7 @@ object SoundManager {
         prefs.edit().putString("name_$soundPath", name).apply()
     }
 
-    fun playSound(context: Context, soundPath: String, loop: Boolean = false) {
+    fun playSound(context: Context, soundPath: String, loop: Boolean = false, usage: Int = AudioAttributes.USAGE_ALARM) {
         if (_currentSoundPath.value == soundPath && mediaPlayer?.isPlaying == true) {
             stopSound()
             return
@@ -43,7 +43,7 @@ object SoundManager {
         stopSound()
         try {
             val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setUsage(usage)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
@@ -58,8 +58,8 @@ object SoundManager {
             } else {
                 val resId = getSoundResourceId(context, soundPath)
                 if (resId != 0) {
-                    MediaPlayer.create(context, resId).apply { 
-                        setAudioAttributes(audioAttributes)
+                    // Usar la sobrecarga que acepta AudioAttributes para asegurar el canal de ALARMA
+                    MediaPlayer.create(context, resId, audioAttributes, 0).apply {
                         isLooping = loop
                         start() 
                     }

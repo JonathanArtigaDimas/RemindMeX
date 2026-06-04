@@ -393,6 +393,7 @@ fun SharedNotesTeamsList(
     var showMembersDialog by remember { mutableStateOf(false) }
     var showAnnouncementDialog by remember { mutableStateOf(false) }
     var showAddNotebookDialog by remember { mutableStateOf(false) }
+    var notebookToRename by remember { mutableStateOf<SharedNotebookEntity?>(null) }
     var newGroupName by remember { mutableStateOf("") }
     var newNotebookName by remember { mutableStateOf("") }
     var announcementText by remember { mutableStateOf("") }
@@ -416,7 +417,13 @@ fun SharedNotesTeamsList(
                 .map { UiNoteItem.Shared(it) }
         } else {
             val notebookItems = sharedNotebooks.map { 
-                UiNoteItem.NotebookItem(Notebook(id = 0, name = it.name, color = it.color, createdAt = it.createdAt)) 
+                UiNoteItem.NotebookItem(Notebook(
+                    id = it.id.hashCode().toLong(), 
+                    name = it.name, 
+                    color = it.color, 
+                    createdAt = it.createdAt,
+                    isPinned = it.isPinned
+                ))
             }
             val standaloneNotes = notes.filter { it.notebookId == null }
                 .filter { 
@@ -652,12 +659,13 @@ fun SharedNotesTeamsList(
                                     )
                                 }
                                 is UiNoteItem.NotebookItem -> {
-                                    val sharedNotebook = sharedNotebooks.find { it.name == item.notebook.name }
+                                    val sharedNotebook = sharedNotebooks.find { it.id.hashCode().toLong() == item.notebook.id }
                                     sharedNotebook?.let { sn ->
                                         SharedNotebookCard(
-                                            name = sn.name,
-                                            color = sn.color,
+                                            notebook = sn,
                                             onClick = { viewModel.setSelectedNotebook(sn.id) },
+                                            onRename = { notebookToRename = sn; newNotebookName = sn.name },
+                                            onTogglePin = { viewModel.toggleSharedNotebookPin(sn) },
                                             onDelete = { viewModel.deleteSharedNotebook(sn.id) }
                                         )
                                     }
@@ -683,7 +691,8 @@ fun SharedNotesTeamsList(
                     onValueChange = { newNotebookName = it },
                     label = { Text("Nombre del cuaderno") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
                 )
             },
             confirmButton = {
@@ -702,6 +711,42 @@ fun SharedNotesTeamsList(
             },
             dismissButton = {
                 TextButton(onClick = { showAddNotebookDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (notebookToRename != null) {
+        AlertDialog(
+            onDismissRequest = { notebookToRename = null },
+            title = { Text("Renombrar Cuaderno") },
+            text = {
+                OutlinedTextField(
+                    value = newNotebookName,
+                    onValueChange = { newNotebookName = it },
+                    label = { Text("Nuevo nombre") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newNotebookName.isNotBlank() && notebookToRename != null) {
+                            viewModel.renameSharedNotebook(notebookToRename!!.id, newNotebookName)
+                            newNotebookName = ""
+                            notebookToRename = null
+                        }
+                    },
+                    enabled = newNotebookName.isNotBlank()
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { notebookToRename = null }) {
                     Text("Cancelar")
                 }
             }
@@ -848,7 +893,7 @@ fun SharedNotesTeamsList(
 }
 
 @Composable
-fun SharedNotebookCard(name: String, color: Long, onClick: () -> Unit, onDelete: () -> Unit) {
+fun SharedNotebookCard(notebook: SharedNotebookEntity, onClick: () -> Unit, onRename: () -> Unit, onTogglePin: () -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -856,18 +901,31 @@ fun SharedNotebookCard(name: String, color: Long, onClick: () -> Unit, onDelete:
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
     ) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = onTogglePin, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = if (notebook.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = "Pin",
+                        tint = if (notebook.isPinned) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             Surface(Modifier.size(56.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f), shape = CircleShape) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(28.dp))
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Text(text = name, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+            Text(text = notebook.name, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onRename, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                }
                 IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                 }
             }
         }

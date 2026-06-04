@@ -316,32 +316,58 @@ fun NewReminderModal(
                 DaySelector(selectedDays) { selectedDays = it }
             }
 
-            // Countdown Timer
-            val remainingTimeText = remember(title, formattedDate, formattedTime, selectedRepetition, selectedDays) {
-                calculateRemainingTime(title, formattedDate, formattedTime, selectedRepetition, selectedDays)
-            }
+    // Countdown Timer and Validation
+    val (remainingTimeText, isFuture) = remember(title, formattedDate, formattedTime, selectedRepetition, selectedDays) {
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        val dateObj = try { sdf.parse("$formattedDate $formattedTime") } catch (e: Exception) { null }
+        val now = System.currentTimeMillis()
+        
+        if (dateObj == null) return@remember "" to true
+        
+        var targetTime = dateObj.time
+        
+        // If repetition is active, we don't block past initial times because it jumps to the next occurrence
+        val isRepetitionActive = selectedRepetition != "Sin repetición"
+        
+        if (targetTime <= now && isRepetitionActive) {
+            val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
+            targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, selectedRepetition, repeatDaysString)
+        }
+        
+        val isValid = targetTime > (now + 55000) // At least 1 minute (with a small grace period)
+        val text = calculateRemainingTime(title, formattedDate, formattedTime, selectedRepetition, selectedDays)
+        
+        text to (isValid || isRepetitionActive)
+    }
 
-            if (remainingTimeText.isNotEmpty() && isTitleValid) {
-                Spacer(Modifier.height(24.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                ) {
-                    Text(
-                        text = remainingTimeText,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
+    val isSaveEnabled = isTitleValid && isFuture
+    val buttonColor = if (isSaveEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
 
-            Button(
-                onClick = { 
-                    if (isTitleValid) {
+    if (remainingTimeText.isNotEmpty() && isTitleValid) {
+        Spacer(Modifier.height(24.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = if (isFuture || selectedRepetition != "Sin repetición") 
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+        ) {
+            Text(
+                text = remainingTimeText,
+                modifier = Modifier.padding(16.dp),
+                color = if (isFuture || selectedRepetition != "Sin repetición")
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.error,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+
+    Button(
+        onClick = { 
+            if (isSaveEnabled) {
                         val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
                         
                         // Intelligent logic: Calculate the actual first occurrence
@@ -371,11 +397,11 @@ fun NewReminderModal(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp).height(56.dp),
-                enabled = isTitleValid,
+                enabled = isSaveEnabled,
                 colors = ButtonDefaults.buttonColors(containerColor = buttonColor, disabledContainerColor = buttonColor),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text(if (initialTitle.isEmpty()) "Crear Recordatorio" else "Guardar Cambios", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isTitleValid) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f))
+                Text(if (initialTitle.isEmpty()) "Crear Recordatorio" else "Guardar Cambios", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isSaveEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f))
             }
             Spacer(Modifier.height(20.dp))
         }

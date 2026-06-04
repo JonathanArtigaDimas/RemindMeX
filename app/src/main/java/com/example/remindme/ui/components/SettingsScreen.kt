@@ -430,7 +430,7 @@ fun SettingsScreen(
                                                     isSelected = defaultSound == name,
                                                     isPlaying = playingSoundPath == name,
                                                     onPlay = { 
-                                                        SoundManager.playSound(context, name) 
+                                                        SoundManager.playSound(context, name, usage = android.media.AudioAttributes.USAGE_NOTIFICATION)
                                                     },
                                                     onClick = { 
                                                         settingsManager.setDefaultNotificationSound(name)
