@@ -42,13 +42,12 @@ fun NoteEditorScreen(
     noteWithTags: NoteWithTags? = null,
     isQuickNote: Boolean = false,
     initialIsShared: Boolean = false,
-    availableTags: List<Tag> = emptyList(),
     availableNotebooks: List<Notebook> = emptyList(),
     sharedNotebooks: List<SharedNotebookEntity> = emptyList(),
     currentGroupId: String? = null,
     commentsJson: String = "[]",
     onDismiss: () -> Unit,
-    onSave: (Note, List<Tag>, Boolean) -> Unit,
+    onSave: (Note, Boolean) -> Unit,
     onDelete: (Note) -> Unit,
     onAddComment: (String, String) -> Unit = { _, _ -> },
     onEditComment: (String, String, String) -> Unit = { _, _, _ -> },
@@ -89,23 +88,11 @@ fun NoteEditorScreen(
     
     var isShared by remember { mutableStateOf(initialIsShared) }
     var selectedNotebookId by remember { mutableStateOf(noteWithTags?.note?.notebookId) }
+    var showFullscreenImage by remember { mutableStateOf(false) }
 
-    val initialTags = noteWithTags?.tags?.map { it.name }?.toSet() ?: emptySet()
-    var selectedTags by remember { mutableStateOf(initialTags) }
-    
     val isRecording by SoundManager.isRecording.collectAsState()
     val playingSoundPath by SoundManager.currentSoundPath.collectAsState()
     val isPlaying = playingSoundPath == audioPath && audioPath != null
-
-    var showAddTagDialog by remember { mutableStateOf(false) }
-    var newTagName by remember { mutableStateOf("") }
-    
-    // Combine preset tags with available tags from DB
-    val allTagsList = remember(availableTags) {
-        val baseTags = listOf("Trabajo", "Personal", "Ideas", "Importante")
-        (baseTags + availableTags.map { it.name }).distinct()
-    }
-    val displayTags = remember { mutableStateListOf<String>().apply { addAll(allTagsList) } }
 
     // State for high-quality camera URI
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -191,7 +178,7 @@ fun NoteEditorScreen(
                                     isQuickNote = isQuickNote,
                                     notebookId = selectedNotebookId
                                 )
-                                onSave(note, selectedTags.map { Tag(it) }, isShared)
+                                onSave(note, isShared)
                                 onDismiss()
                             }
                         }) {
@@ -309,51 +296,6 @@ fun NoteEditorScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Tags Section
-                    Text(
-                        text = "Etiquetas:",
-                        color = MaterialTheme.colorScheme.secondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(40.dp).clickable { showAddTagDialog = true },
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = CircleShape,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                            }
-                        }
-
-                        displayTags.forEach { tag ->
-                            TagChip(
-                                name = tag,
-                                isSelected = selectedTags.contains(tag),
-                                onClick = {
-                                    selectedTags = if (selectedTags.contains(tag)) {
-                                        selectedTags - tag
-                                    } else {
-                                        selectedTags + tag
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
                     // Notebooks Section
                     Text(
                         text = "Cuaderno:",
@@ -408,10 +350,11 @@ fun NoteEditorScreen(
                         Box(modifier = Modifier.padding(vertical = 16.dp)) {
                             AsyncImage(
                                 model = it,
-                                contentDescription = null,
+                                contentDescription = "Previsualización de imagen",
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp)),
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { showFullscreenImage = true },
                                 contentScale = ContentScale.FillWidth
                             )
                             IconButton(
@@ -653,50 +596,10 @@ fun NoteEditorScreen(
         }
     }
 
-    if (showAddTagDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showAddTagDialog = false
-                newTagName = ""
-            },
-            title = { Text("Nueva Etiqueta", color = MaterialTheme.colorScheme.onSurface) },
-            text = {
-                TextField(
-                    value = newTagName,
-                    onValueChange = { newTagName = it },
-                    placeholder = { Text("Nombre de la etiqueta") },
-                    singleLine = true,
-                    colors = TextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (newTagName.isNotBlank()) {
-                        val trimmedTag = newTagName.trim()
-                        if (!displayTags.contains(trimmedTag)) {
-                            displayTags.add(0, trimmedTag)
-                        }
-                        selectedTags = selectedTags + trimmedTag
-                        showAddTagDialog = false
-                        newTagName = ""
-                    }
-                }) {
-                    Text("Agregar", color = MaterialTheme.colorScheme.primary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { 
-                    showAddTagDialog = false
-                    newTagName = ""
-                }) {
-                    Text("Cancelar", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface
+    if (showFullscreenImage && imagePath != null) {
+        FullscreenImageViewer(
+            imagePath = imagePath!!,
+            onDismiss = { showFullscreenImage = false }
         )
     }
 }

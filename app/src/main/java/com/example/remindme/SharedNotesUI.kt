@@ -1144,6 +1144,7 @@ fun SharedNoteCard(
     var showChat by remember { mutableStateOf(false) }
     var commentText by remember { mutableStateOf("") }
     var editingCommentId by remember { mutableStateOf<String?>(null) }
+    var showFullscreenImage by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -1158,11 +1159,12 @@ fun SharedNoteCard(
             if (note.imagePath != null) {
                 AsyncImage(
                     model = note.imagePath,
-                    contentDescription = null,
+                    contentDescription = "Imagen de la nota",
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 140.dp)
-                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .clickable { showFullscreenImage = true },
                     contentScale = ContentScale.Crop
                 )
             }
@@ -1461,5 +1463,12 @@ fun SharedNoteCard(
                 }
             }
         }
+    }
+
+    if (showFullscreenImage && note.imagePath != null) {
+        com.example.remindme.ui.components.FullscreenImageViewer(
+            imagePath = note.imagePath,
+            onDismiss = { showFullscreenImage = false }
+        )
     }
 }

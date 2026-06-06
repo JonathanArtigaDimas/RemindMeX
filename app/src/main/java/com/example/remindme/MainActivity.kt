@@ -614,7 +614,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (showNoteEditor.value) {
-                        val tags by noteViewModel.allTags.collectAsState()
                         val notebooks by noteViewModel.allNotebooks.collectAsState()
                         val sharedNotebooks by sharedViewModel.sharedNotebooksFromRoom.collectAsState()
                         val currentGroupId by sharedViewModel.currentGroupId.collectAsState()
@@ -623,7 +622,6 @@ class MainActivity : ComponentActivity() {
                             noteWithTags = editingNote.value,
                             isQuickNote = isQuickNote.value,
                             initialIsShared = noteEditorIsShared.value,
-                            availableTags = tags,
                             availableNotebooks = notebooks,
                             sharedNotebooks = sharedNotebooks,
                             currentGroupId = currentGroupId,
@@ -635,7 +633,7 @@ class MainActivity : ComponentActivity() {
                                 editingSharedNoteId.value = null
                                 editingNoteComments.value = "[]"
                             },
-                            onSave = { note, tags, isShared ->
+                            onSave = { note, isShared ->
                                 lifecycleScope.launch {
                                     if (isShared && currentGroupId != null) {
                                         sharedViewModel.shareExistingNote(
@@ -650,7 +648,7 @@ class MainActivity : ComponentActivity() {
                                             notebookId = note.notebookId?.toString()
                                         )
                                     } else {
-                                        noteViewModel.saveNote(note, tags)
+                                        noteViewModel.saveNote(note, emptyList())
                                     }
                                 }
                                 showNoteEditor.value = false
