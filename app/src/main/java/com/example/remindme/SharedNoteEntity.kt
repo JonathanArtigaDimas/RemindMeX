@@ -19,5 +19,6 @@ data class SharedNoteEntity(
     val isPinned: Boolean = false,
     val commentsJson: String = "[]",
     val needsSync: Boolean = false,
-    val notebookId: String? = null
+    val notebookId: String? = null,
+    val imagePathsJson: String = "[]" // Soporte para múltiples imágenes
 )

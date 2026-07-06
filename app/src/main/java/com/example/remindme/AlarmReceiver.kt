@@ -41,19 +41,10 @@ class AlarmReceiver : BroadcastReceiver() {
                 
                 val description = existing.description ?: ""
                 val color = existing.color ?: 0xFF3B82F6
-                val repetition = existing.repetition ?: "Sin repetición"
-                val repeatDays = existing.repeatDays
                 val sound = existing.sound ?: "Campana"
                 val reminderType = existing.type
 
-                dao.update(existing.copy(isCompleted = true))
-
-                if (repetition != "Sin repetición") {
-                    val parts = existing.dateTime.split(" ")
-                    if (parts.size == 2) {
-                        ReminderScheduler.scheduleReminder(context, id, title, parts[0], parts[1], repetition, repeatDays)
-                    }
-                }
+                ReminderScheduler.completeReminderTask(context, existing, dao)
 
                 val alertIntent = Intent(context, ReminderAlertActivity::class.java).apply {
                     putExtra("id", id)

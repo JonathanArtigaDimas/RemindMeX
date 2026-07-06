@@ -77,7 +77,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
                     set(Calendar.SECOND, 0)
                 }
 
-                val nextTime = ReminderScheduler.getNextOccurrence(tomorrowCalendar.timeInMillis, repetition, existing.repeatDays)
+                val nextTime = ReminderScheduler.getNextOccurrence(tomorrowCalendar.timeInMillis, repetition, existing.repeatDays, existing.customInterval)
                 val nextDateTime = sdf.format(Date(nextTime))
                 
                 val updated = existing.copy(
@@ -88,7 +88,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
                 ReminderScheduler.scheduleReminder(
                     context, id, existing.title, 
                     nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
-                    repetition, existing.repeatDays
+                    repetition, existing.repeatDays, existing.customInterval
                 )
             }
         }
@@ -100,27 +100,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val existing = dao.getReminderById(id)
             if (existing != null) {
-                val repetition = existing.repetition ?: "Sin repetición"
-                if (repetition != "Sin repetición") {
-                    // Reprogramar para la siguiente ocurrencia
-                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-                    val currentDate = sdf.parse(existing.dateTime)?.time ?: System.currentTimeMillis()
-                    val nextTime = ReminderScheduler.getNextOccurrence(currentDate, repetition, existing.repeatDays)
-                    val nextDateTime = sdf.format(Date(nextTime))
-                    
-                    val updated = existing.copy(
-                        dateTime = nextDateTime,
-                        isCompleted = false
-                    )
-                    dao.update(updated)
-                    ReminderScheduler.scheduleReminder(
-                        context, id, existing.title, 
-                        nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
-                        repetition, existing.repeatDays
-                    )
-                } else {
-                    dao.update(existing.copy(isCompleted = true))
-                }
+                ReminderScheduler.completeReminderTask(context, existing, dao)
             }
         }
     }
@@ -146,7 +126,7 @@ class ReminderActionReceiver : BroadcastReceiver() {
                     isCompleted = false 
                 )
                 dao.update(updated)
-                ReminderScheduler.scheduleReminder(context, id, title, newDate, newTime, existing.repetition ?: "Sin repetición", existing.repeatDays)
+                ReminderScheduler.scheduleReminder(context, id, title, newDate, newTime, existing.repetition ?: "Sin repetición", existing.repeatDays, existing.customInterval)
             }
         }
     }

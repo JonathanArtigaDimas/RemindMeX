@@ -324,7 +324,7 @@ class SharedNotesViewModel(
         }
     }
 
-    fun addNote(title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, notebookId: String? = null) {
+    fun addNote(title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, notebookId: String? = null, imagePaths: List<String> = emptyList()) {
         val groupId = _currentGroupId.value ?: return
         val user = _currentUser.value ?: return
         viewModelScope.launch {
@@ -333,30 +333,20 @@ class SharedNotesViewModel(
             // Verificamos conexión antes de subir
             val isOnline = isNetworkAvailable(context)
 
-            val finalImagePath = if (imagePath?.startsWith("/") == true) {
-                if (isOnline) {
-                    val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
-                    if (uploadedUrl == null) {
-                        _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión.")
-                        return@launch
-                    }
-                    uploadedUrl
-                } else {
-                    imagePath // Mantenemos ruta local si estamos offline
-                }
+            val finalMainImage = if (imagePath?.startsWith("/") == true && isOnline) {
+                storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
             } else imagePath
 
-            val finalAudioPath = if (audioPath?.startsWith("/") == true) {
-                if (isOnline) {
-                    val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
-                    if (uploadedUrl == null) {
-                        _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
-                        return@launch
-                    }
-                    uploadedUrl
-                } else {
-                    audioPath
+            val finalImagePaths = if (isOnline) {
+                imagePaths.map { path ->
+                    if (path.startsWith("/")) {
+                        storageRepository.uploadFile(path, "shared_images/${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}.jpg") ?: path
+                    } else path
                 }
+            } else imagePaths
+
+            val finalAudioPath = if (audioPath?.startsWith("/") == true && isOnline) {
+                storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
             } else audioPath
 
             val noteId = java.util.UUID.randomUUID().toString()
@@ -367,18 +357,14 @@ class SharedNotesViewModel(
                 content = content,
                 authorId = user.uid,
                 authorName = user.displayName ?: "Anon",
-                imagePath = finalImagePath,
+                imagePath = finalMainImage,
                 audioPath = finalAudioPath,
                 color = color,
-                notebookId = notebookId ?: _selectedNotebookId.value // Si no se pasa, usamos el actual de la UI
+                notebookId = notebookId ?: _selectedNotebookId.value,
+                imagePaths = finalImagePaths
             )
             
-            if (isOnline) {
-                repository.saveSharedNote(note)
-            } else {
-                repository.saveSharedNote(note)
-            }
-            
+            repository.saveSharedNote(note)
             _uiState.value = SharedNotesUiState.Success
         }
     }
@@ -394,43 +380,29 @@ class SharedNotesViewModel(
         }
     }
 
-    fun shareExistingNote(groupId: String, title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, isPinned: Boolean = false, noteId: String? = null, notebookId: String? = null) {
+    fun shareExistingNote(groupId: String, title: String, content: String, imagePath: String? = null, audioPath: String? = null, color: Long = 0xFF1E293B, isPinned: Boolean = false, noteId: String? = null, notebookId: String? = null, imagePaths: List<String> = emptyList()) {
         viewModelScope.launch {
             _uiState.value = SharedNotesUiState.Loading
-            
-            // Verificamos conexión antes de subir
             val isOnline = isNetworkAvailable(context)
 
-            val finalImagePath = if (imagePath?.startsWith("/") == true) {
-                if (isOnline) {
-                    val uploadedUrl = storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
-                    if (uploadedUrl == null) {
-                        _uiState.value = SharedNotesUiState.Error("Fallo al subir la imagen. Verifica tu conexión.")
-                        return@launch
-                    }
-                    uploadedUrl
-                } else {
-                    imagePath // Mantenemos ruta local si estamos offline
-                }
+            val finalMainImage = if (imagePath?.startsWith("/") == true && isOnline) {
+                storageRepository.uploadFile(imagePath, "shared_images/${System.currentTimeMillis()}.jpg")
             } else imagePath
 
-            val finalAudioPath = if (audioPath?.startsWith("/") == true) {
-                if (isOnline) {
-                    val uploadedUrl = storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
-                    if (uploadedUrl == null) {
-                        _uiState.value = SharedNotesUiState.Error("Fallo al subir el audio.")
-                        return@launch
-                    }
-                    uploadedUrl
-                } else {
-                    audioPath
+            val finalImagePaths = if (isOnline) {
+                imagePaths.map { path ->
+                    if (path.startsWith("/")) {
+                        storageRepository.uploadFile(path, "shared_images/${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}.jpg") ?: path
+                    } else path
                 }
+            } else imagePaths
+
+            val finalAudioPath = if (audioPath?.startsWith("/") == true && isOnline) {
+                storageRepository.uploadFile(audioPath, "shared_audio/${System.currentTimeMillis()}.mp3")
             } else audioPath
 
             val finalNoteId = noteId ?: java.util.UUID.randomUUID().toString()
             val user = repository.getCurrentUser() 
-            
-            // CRÍTICO: Si notebookId es nulo, intentamos obtener el de la UI si el usuario está dentro de una carpeta
             val finalNotebookId = notebookId ?: _selectedNotebookId.value
 
             val note = NoteFirestore(
@@ -440,11 +412,12 @@ class SharedNotesViewModel(
                 content = content,
                 authorId = user?.uid ?: "anon",
                 authorName = user?.displayName ?: "Anon",
-                imagePath = finalImagePath,
+                imagePath = finalMainImage,
                 audioPath = finalAudioPath,
                 color = color,
                 isPinned = isPinned,
-                notebookId = finalNotebookId
+                notebookId = finalNotebookId,
+                imagePaths = finalImagePaths
             )
             
             repository.saveSharedNote(note)

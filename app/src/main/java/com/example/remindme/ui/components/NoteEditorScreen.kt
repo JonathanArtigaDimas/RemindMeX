@@ -57,6 +57,8 @@ fun NoteEditorScreen(
     val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
     val gson = remember { com.google.gson.Gson() }
     val commentType = remember { object : com.google.gson.reflect.TypeToken<List<NoteComment>>() {}.type }
+    val pathsType = remember { object : com.google.gson.reflect.TypeToken<List<String>>() {}.type }
+
     val comments = remember(commentsJson) { 
         gson.fromJson<List<NoteComment>>(commentsJson, commentType) ?: emptyList()
     }
@@ -81,14 +83,24 @@ fun NoteEditorScreen(
             }
         ) 
     }
-    var imagePath by remember { mutableStateOf(noteWithTags?.note?.imagePath) }
+    
+    val initialPaths: List<String> = remember(noteWithTags) {
+        val json = noteWithTags?.note?.imagePathsJson ?: "[]"
+        val list = gson.fromJson<List<String>>(json, pathsType) ?: emptyList()
+        // Backward compatibility: add single imagePath if list is empty
+        if (list.isEmpty() && noteWithTags?.note?.imagePath != null) {
+            listOf(noteWithTags.note.imagePath)
+        } else list
+    }
+    
+    var imagePaths by remember { mutableStateOf(initialPaths) }
     var audioPath by remember { mutableStateOf(noteWithTags?.note?.audioPath) }
     val defaultNoteColor = 0xFF1E293B
     var selectedColor by remember { mutableStateOf(noteWithTags?.note?.color ?: defaultNoteColor) }
     
     var isShared by remember { mutableStateOf(initialIsShared) }
     var selectedNotebookId by remember { mutableStateOf(noteWithTags?.note?.notebookId) }
-    var showFullscreenImage by remember { mutableStateOf(false) }
+    var showFullscreenImage by remember { mutableStateOf<String?>(null) }
 
     val isRecording by SoundManager.isRecording.collectAsState()
     val playingSoundPath by SoundManager.currentSoundPath.collectAsState()
@@ -108,7 +120,7 @@ fun NoteEditorScreen(
                     input.copyTo(output)
                 }
             }
-            imagePath = file.absolutePath
+            imagePaths = imagePaths + file.absolutePath
         }
     }
 
@@ -117,7 +129,9 @@ fun NoteEditorScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            imagePath = tempCameraFile?.absolutePath
+            tempCameraFile?.absolutePath?.let { path ->
+                imagePaths = imagePaths + path
+            }
         }
     }
 
@@ -172,7 +186,8 @@ fun NoteEditorScreen(
                                 val note = (noteWithTags?.note ?: Note(title = title, content = content)).copy(
                                     title = title,
                                     content = content,
-                                    imagePath = imagePath,
+                                    imagePath = imagePaths.firstOrNull(),
+                                    imagePathsJson = gson.toJson(imagePaths),
                                     audioPath = audioPath,
                                     color = selectedColor,
                                     isQuickNote = isQuickNote,
@@ -345,26 +360,40 @@ fun NoteEditorScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Image Preview
-                    imagePath?.let {
-                        Box(modifier = Modifier.padding(vertical = 16.dp)) {
-                            AsyncImage(
-                                model = it,
-                                contentDescription = "Previsualización de imagen",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { showFullscreenImage = true },
-                                contentScale = ContentScale.FillWidth
-                            )
-                            IconButton(
-                                onClick = { imagePath = null },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                            ) {
-                                Icon(Icons.Default.Close, null, tint = Color.White)
+                    // Image Gallery
+                    if (imagePaths.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            imagePaths.forEachIndexed { index, path ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(120.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                ) {
+                                    AsyncImage(
+                                        model = path,
+                                        contentDescription = "Imagen de la nota",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { showFullscreenImage = path },
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    IconButton(
+                                        onClick = { imagePaths = imagePaths.filterIndexed { i, _ -> i != index } },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(24.dp)
+                                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                    ) {
+                                        Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -596,10 +625,10 @@ fun NoteEditorScreen(
         }
     }
 
-    if (showFullscreenImage && imagePath != null) {
+    if (showFullscreenImage != null) {
         FullscreenImageViewer(
-            imagePath = imagePath!!,
-            onDismiss = { showFullscreenImage = false }
+            imagePath = showFullscreenImage!!,
+            onDismiss = { showFullscreenImage = null }
         )
     }
 }

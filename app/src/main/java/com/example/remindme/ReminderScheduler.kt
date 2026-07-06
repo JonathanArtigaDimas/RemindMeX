@@ -13,7 +13,7 @@ import java.util.*
 object ReminderScheduler {
     private const val TAG = "ReminderScheduler"
 
-    fun scheduleReminder(context: Context, id: Int, title: String, date: String, time: String, repetition: String = "Sin repetición", repeatDays: String? = null) {
+    fun scheduleReminder(context: Context, id: Int, title: String, date: String, time: String, repetition: String = "Sin repetición", repeatDays: String? = null, customInterval: Int? = null) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
         // Primero, cancelar cualquier alarma previa para este ID
@@ -38,7 +38,7 @@ object ReminderScheduler {
                 
                 // Si la fecha ya pasó o tiene repetición, calculamos la PRÓXIMA ocurrencia real.
                 if (triggerTime <= System.currentTimeMillis() || (repetition != "Sin repetición")) {
-                    triggerTime = getNextOccurrence(triggerTime, repetition, repeatDays)
+                    triggerTime = getNextOccurrence(triggerTime, repetition, repeatDays, customInterval)
                 }
 
                 if (triggerTime > System.currentTimeMillis()) {
@@ -101,25 +101,68 @@ object ReminderScheduler {
         alarmManager.setAlarmClock(info, pendingIntent)
     }
 
-    fun getNextOccurrence(startTime: Long, repetition: String, repeatDays: String?): Long {
+    fun getNextOccurrence(startTime: Long, repetition: String, repeatDays: String?, customInterval: Int? = null): Long {
         val calendar = Calendar.getInstance().apply { timeInMillis = startTime }
         val now = Calendar.getInstance()
         
-        // Si el tiempo base es "ahora" o en el pasado, buscamos la siguiente ocurrencia real.
-        // También si es semanal y el día actual no es válido.
+        // Buscamos la siguiente fecha válida que esté estrictamente en el futuro
         var safetyCount = 0
-        while (calendar.timeInMillis <= now.timeInMillis || (repetition == "Semanal" && !isValidDay(calendar, repeatDays))) {
+        do {
             when (repetition) {
                 "Diario" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
                 "Semanal" -> calendar.add(Calendar.DAY_OF_YEAR, 1)
                 "Mensual" -> calendar.add(Calendar.MONTH, 1)
+                "Personalizado" -> {
+                    val interval = customInterval ?: 1 // Mínimo 1 minuto
+                    calendar.add(Calendar.MINUTE, interval)
+                }
                 else -> break
             }
             safetyCount++
-            if (safetyCount > 366 * 2) break // Seguridad para evitar bucles infinitos (cubriendo años bisiestos)
-        }
+            if (safetyCount > 366 * 2) break // Seguridad para evitar bucles infinitos
+        } while (calendar.timeInMillis <= now.timeInMillis || (repetition == "Semanal" && !isValidDay(calendar, repeatDays)))
 
         return calendar.timeInMillis
+    }
+
+    suspend fun completeReminderTask(context: Context, reminder: Reminder, dao: ReminderDao) {
+        val repetition = reminder.repetition ?: "Sin repetición"
+        
+        if (repetition == "Sin repetición") {
+            // Caso normal: Solo marcar como completado
+            dao.update(reminder.copy(isCompleted = true))
+            cancelReminder(context, reminder.id)
+        } else {
+            // Caso recurrente: Calcular próxima ocurrencia y reprogramar
+            val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+            val currentBaseTime = try {
+                sdf.parse(reminder.dateTime)?.time ?: System.currentTimeMillis()
+            } catch (e: Exception) {
+                System.currentTimeMillis()
+            }
+
+            val nextOccurrence = getNextOccurrence(currentBaseTime, repetition, reminder.repeatDays, reminder.customInterval)
+            val nextDateTimeStr = sdf.format(Date(nextOccurrence))
+            val dateParts = nextDateTimeStr.split(" ")
+
+            val updatedReminder = reminder.copy(
+                dateTime = nextDateTimeStr,
+                isCompleted = false // Se mantiene pendiente para la próxima vez
+            )
+            
+            dao.update(updatedReminder)
+            
+            scheduleReminder(
+                context = context,
+                id = updatedReminder.id,
+                title = updatedReminder.title,
+                date = dateParts[0],
+                time = dateParts[1],
+                repetition = repetition,
+                repeatDays = updatedReminder.repeatDays,
+                customInterval = updatedReminder.customInterval
+            )
+        }
     }
 
     private fun isValidDay(calendar: Calendar, repeatDays: String?): Boolean {

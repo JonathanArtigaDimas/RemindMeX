@@ -268,17 +268,21 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             } else {
                                                 val now = Calendar.getInstance()
-                                                val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                                                val sdfDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
                                                 
-                                                val todayStr = sdf.format(now.time)
+                                                val todayStr = sdfDate.format(now.time)
                                                 val tomorrowCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
-                                                val tomorrowStr = sdf.format(tomorrowCal.time)
+                                                val tomorrowStr = sdfDate.format(tomorrowCal.time)
                                                 
                                                 val weekLaterCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 7) }
                                                 val monthLaterCal = Calendar.getInstance().apply { add(Calendar.MONTH, 1) }
 
                                                 val activeReminders = reminders.filter { !it.isDeleted && !it.isCompleted }
-                                                val completedReminders = reminders.filter { !it.isDeleted && it.isCompleted }.sortedByDescending { it.dateTime }
+                                                val sdfFull = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                                                val completedReminders = reminders.filter { !it.isDeleted && it.isCompleted }
+                                                    .sortedByDescending { 
+                                                        try { sdfFull.parse(it.dateTime)?.time ?: 0L } catch (e: Exception) { 0L }
+                                                    }
                                                 
                                                 val todayReminders = activeReminders.filter { 
                                                     it.dateTime.split(" ").getOrNull(0) == todayStr 
@@ -290,7 +294,7 @@ class MainActivity : ComponentActivity() {
                                                 val next7DaysReminders = activeReminders.filter {
                                                     val dateStr = it.dateTime.split(" ").getOrNull(0) ?: ""
                                                     try {
-                                                        val date = sdf.parse(dateStr)
+                                                        val date = sdfDate.parse(dateStr)
                                                         date != null && date.after(tomorrowCal.time) && !date.after(weekLaterCal.time)
                                                     } catch (e: Exception) { false }
                                                 }
@@ -298,7 +302,7 @@ class MainActivity : ComponentActivity() {
                                                 val nextMonthReminders = activeReminders.filter {
                                                     val dateStr = it.dateTime.split(" ").getOrNull(0) ?: ""
                                                     try {
-                                                        val date = sdf.parse(dateStr)
+                                                        val date = sdfDate.parse(dateStr)
                                                         date != null && date.after(weekLaterCal.time) && !date.after(monthLaterCal.time)
                                                     } catch (e: Exception) { false }
                                                 }
@@ -339,7 +343,11 @@ class MainActivity : ComponentActivity() {
                                                                     isCompleted = r.isCompleted,
                                                                     onToggleComplete = {
                                                                         lifecycleScope.launch {
-                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                            if (!r.isCompleted) {
+                                                                                ReminderScheduler.completeReminderTask(this@MainActivity, r, reminderDao)
+                                                                            } else {
+                                                                                reminderDao.update(r.copy(isCompleted = false))
+                                                                            }
                                                                         }
                                                                     },
                                                                     onEdit = {
@@ -364,7 +372,11 @@ class MainActivity : ComponentActivity() {
                                                                     isCompleted = r.isCompleted,
                                                                     onToggleComplete = {
                                                                         lifecycleScope.launch {
-                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                            if (!r.isCompleted) {
+                                                                                ReminderScheduler.completeReminderTask(this@MainActivity, r, reminderDao)
+                                                                            } else {
+                                                                                reminderDao.update(r.copy(isCompleted = false))
+                                                                            }
                                                                         }
                                                                     },
                                                                     onEdit = {
@@ -389,7 +401,11 @@ class MainActivity : ComponentActivity() {
                                                                     isCompleted = r.isCompleted,
                                                                     onToggleComplete = {
                                                                         lifecycleScope.launch {
-                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                            if (!r.isCompleted) {
+                                                                                ReminderScheduler.completeReminderTask(this@MainActivity, r, reminderDao)
+                                                                            } else {
+                                                                                reminderDao.update(r.copy(isCompleted = false))
+                                                                            }
                                                                         }
                                                                     },
                                                                     onEdit = {
@@ -414,7 +430,11 @@ class MainActivity : ComponentActivity() {
                                                                     isCompleted = r.isCompleted,
                                                                     onToggleComplete = {
                                                                         lifecycleScope.launch {
-                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                            if (!r.isCompleted) {
+                                                                                ReminderScheduler.completeReminderTask(this@MainActivity, r, reminderDao)
+                                                                            } else {
+                                                                                reminderDao.update(r.copy(isCompleted = false))
+                                                                            }
                                                                         }
                                                                     },
                                                                     onEdit = {
@@ -439,7 +459,11 @@ class MainActivity : ComponentActivity() {
                                                                     isCompleted = r.isCompleted,
                                                                     onToggleComplete = {
                                                                         lifecycleScope.launch {
-                                                                            reminderDao.update(r.copy(isCompleted = !r.isCompleted))
+                                                                            if (!r.isCompleted) {
+                                                                                ReminderScheduler.completeReminderTask(this@MainActivity, r, reminderDao)
+                                                                            } else {
+                                                                                reminderDao.update(r.copy(isCompleted = false))
+                                                                            }
                                                                         }
                                                                     },
                                                                     onEdit = {
@@ -566,20 +590,21 @@ class MainActivity : ComponentActivity() {
                             initialSound = r?.sound ?: "Campana",
                             initialRepetition = r?.repetition ?: "Sin repetición",
                             initialRepeatDays = r?.repeatDays,
+                            initialCustomInterval = r?.customInterval,
                             initialType = r?.type ?: "Recordatorio",
                             onDismiss = { 
                                 showReminderEditor.value = false
                                 editingReminder.value = null
                             },
-                            onSave = { title, desc, date, time, cat, color, sound, rep, days, type ->
+                            onSave = { title, desc, date, time, cat, color, sound, rep, days, type, interval ->
                                 val newR = r?.copy(
                                     title = title, description = desc, dateTime = "$date $time",
                                     category = cat, color = color, sound = sound, repetition = rep,
-                                    repeatDays = days, type = type
+                                    repeatDays = days, type = type, customInterval = interval
                                 ) ?: Reminder(
                                     id = 0, title = title, description = desc, dateTime = "$date $time",
                                     category = cat, color = color, sound = sound, repetition = rep,
-                                    repeatDays = days, isCompleted = false, type = type
+                                    repeatDays = days, isCompleted = false, type = type, customInterval = interval
                                 )
                                 lifecycleScope.launch {
                                     if (newR.id == 0) {
@@ -592,7 +617,8 @@ class MainActivity : ComponentActivity() {
                                             date = scheduledR.dateTime.split(" ").getOrNull(0) ?: "",
                                             time = scheduledR.dateTime.split(" ").getOrNull(1) ?: "",
                                             repetition = scheduledR.repetition ?: "Sin repetición",
-                                            repeatDays = scheduledR.repeatDays
+                                            repeatDays = scheduledR.repeatDays,
+                                            customInterval = scheduledR.customInterval
                                         )
                                     } else {
                                         reminderDao.update(newR)
@@ -603,7 +629,8 @@ class MainActivity : ComponentActivity() {
                                             date = newR.dateTime.split(" ").getOrNull(0) ?: "",
                                             time = newR.dateTime.split(" ").getOrNull(1) ?: "",
                                             repetition = newR.repetition ?: "Sin repetición",
-                                            repeatDays = newR.repeatDays
+                                            repeatDays = newR.repeatDays,
+                                            customInterval = newR.customInterval
                                         )
                                     }
                                 }
@@ -636,6 +663,10 @@ class MainActivity : ComponentActivity() {
                             onSave = { note, isShared ->
                                 lifecycleScope.launch {
                                     if (isShared && currentGroupId != null) {
+                                        val gson = com.google.gson.Gson()
+                                        val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                                        val imagePathsList: List<String> = gson.fromJson(note.imagePathsJson, type) ?: emptyList()
+                                        
                                         sharedViewModel.shareExistingNote(
                                             groupId = currentGroupId!!, 
                                             title = note.title, 
@@ -645,7 +676,8 @@ class MainActivity : ComponentActivity() {
                                             color = note.color,
                                             isPinned = note.isPinned,
                                             noteId = editingSharedNoteId.value,
-                                            notebookId = note.notebookId?.toString()
+                                            notebookId = note.notebookId?.toString(),
+                                            imagePaths = imagePathsList
                                         )
                                     } else {
                                         noteViewModel.saveNote(note, emptyList())

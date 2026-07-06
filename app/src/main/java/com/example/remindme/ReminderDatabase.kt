@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [Reminder::class, Note::class, Tag::class, NoteTagCrossRef::class, SharedNoteEntity::class, FavoriteGroup::class, Notebook::class, SharedNotebookEntity::class], 
-    version = 18, // Incrementado tras añadir isPinned a SharedNotebookEntity
+    version = 20, // Incrementado tras añadir customInterval a Reminder
     exportSchema = false
 )
 abstract class ReminderDatabase : RoomDatabase() {

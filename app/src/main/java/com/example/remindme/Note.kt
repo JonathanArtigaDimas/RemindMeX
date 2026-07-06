@@ -22,7 +22,8 @@ data class Note(
     val isDeleted: Boolean = false,
     val deletedAt: Long? = null,
     val notebookId: Long? = null,
-    val needsSync: Boolean = false // Marcador para subida offline
+    val needsSync: Boolean = false, // Marcador para subida offline
+    val imagePathsJson: String = "[]" // Soporte para múltiples imágenes
 )
 
 @Entity(tableName = "tags")

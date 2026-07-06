@@ -42,9 +42,10 @@ fun NewReminderModal(
     initialSound: String = "Campana",
     initialRepetition: String = "Sin repetición",
     initialRepeatDays: String? = null,
+    initialCustomInterval: Int? = null,
     initialType: String = "Recordatorio",
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, Long, String, String, String?, String) -> Unit
+    onSave: (String, String, String, String, String, Long, String, String, String?, String, Int?) -> Unit
 ) {
     val context = LocalContext.current
     var title by remember { mutableStateOf(initialTitle) }
@@ -53,6 +54,7 @@ fun NewReminderModal(
     var selectedColor by remember { mutableStateOf(initialColor) }
     var selectedSound by remember { mutableStateOf(initialSound) }
     var selectedRepetition by remember { mutableStateOf(initialRepetition) }
+    var customInterval by remember { mutableStateOf(initialCustomInterval?.toString() ?: "20") }
     var selectedType by remember { mutableStateOf(initialType) }
     
     val isRecording by SoundManager.isRecording.collectAsState()
@@ -145,7 +147,7 @@ fun NewReminderModal(
     val categories = listOf("Personal", "Trabajo", "Salud", "Finanzas", "Familia", "Otro")
     val colors = listOf(0xFF3B82F6, 0xFFEF4444, 0xFF10B981, 0xFFF59E0B, 0xFF8B5CF6, 0xFFEC4899, 0xFF06B6D4, 0xFF6366F1, 0xFF2DD4BF, 0xFFF97316, 0xFF84CC16, 0xFF64748B)
     val presetSounds = listOf("Clásico", "Digitalic", "Cristales", "Univerfield", "Melodic", "Aviso", "Campana", "Cristal")
-    val repetitions = listOf("Sin repetición", "Diario", "Semanal", "Mensual")
+    val repetitions = listOf("Sin repetición", "Diario", "Semanal", "Mensual", "Personalizado")
 
     BackHandler(onBack = onDismiss)
 
@@ -316,29 +318,42 @@ fun NewReminderModal(
                 DaySelector(selectedDays) { selectedDays = it }
             }
 
-    // Countdown Timer and Validation
-    val (remainingTimeText, isFuture) = remember(title, formattedDate, formattedTime, selectedRepetition, selectedDays) {
-        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        val dateObj = try { sdf.parse("$formattedDate $formattedTime") } catch (e: Exception) { null }
-        val now = System.currentTimeMillis()
-        
-        if (dateObj == null) return@remember "" to true
-        
-        var targetTime = dateObj.time
-        
-        // If repetition is active, we don't block past initial times because it jumps to the next occurrence
-        val isRepetitionActive = selectedRepetition != "Sin repetición"
-        
-        if (targetTime <= now && isRepetitionActive) {
-            val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
-            targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, selectedRepetition, repeatDaysString)
-        }
-        
-        val isValid = targetTime > (now + 55000) // At least 1 minute (with a small grace period)
-        val text = calculateRemainingTime(title, formattedDate, formattedTime, selectedRepetition, selectedDays)
-        
-        text to (isValid || isRepetitionActive)
-    }
+            if (selectedRepetition == "Personalizado") {
+                SectionHeader("REPETIR CADA (MINUTOS)")
+                CustomTextField(
+                    value = customInterval,
+                    onValueChange = { if (it.all { char -> char.isDigit() }) customInterval = it },
+                    placeholder = "Ej: 22",
+                    bgColor = MaterialTheme.colorScheme.surface,
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                )
+            }
+
+            // Countdown Timer and Validation
+            val (remainingTimeText, isFuture) = remember(title, formattedDate, formattedTime, selectedRepetition, selectedDays, customInterval) {
+                val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                val dateObj = try { sdf.parse("$formattedDate $formattedTime") } catch (e: Exception) { null }
+                val now = System.currentTimeMillis()
+                
+                if (dateObj == null) return@remember "" to true
+                
+                var targetTime = dateObj.time
+                
+                // If repetition is active, we don't block past initial times because it jumps to the next occurrence
+                val isRepetitionActive = selectedRepetition != "Sin repetición"
+                
+                if (targetTime <= now && isRepetitionActive) {
+                    val repeatDaysString = if (selectedRepetition == "Semanal") selectedDays.joinToString(",") else null
+                    val intervalInt = customInterval.toIntOrNull() ?: 1
+                    targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, selectedRepetition, repeatDaysString, intervalInt)
+                }
+                
+                val isValid = targetTime > (now + 55000) // At least 1 minute (with a small grace period)
+                val intervalInt = customInterval.toIntOrNull() ?: 1
+                val text = calculateRemainingTime(title, formattedDate, formattedTime, selectedRepetition, selectedDays, intervalInt)
+                
+                text to (isValid || isRepetitionActive)
+            }
 
     val isSaveEnabled = isTitleValid && isFuture
     val buttonColor = if (isSaveEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
@@ -378,11 +393,13 @@ fun NewReminderModal(
                             try {
                                 val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
                                 val initialDateTime = sdf.parse("$formattedDate $formattedTime")?.time ?: System.currentTimeMillis()
+                                val intervalInt = customInterval.toIntOrNull() ?: 1
                                 
                                 val nextOccurrence = com.example.remindme.ReminderScheduler.getNextOccurrence(
                                     initialDateTime, 
                                     selectedRepetition, 
-                                    repeatDaysString
+                                    repeatDaysString,
+                                    intervalInt
                                 )
                                 
                                 val nextCalendar = Calendar.getInstance().apply { timeInMillis = nextOccurrence }
@@ -393,7 +410,7 @@ fun NewReminderModal(
                             }
                         }
                         
-                        onSave(title, description, finalDate, finalTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString, selectedType)
+                        onSave(title, description, finalDate, finalTime, selectedCategory, selectedColor, selectedSound, selectedRepetition, repeatDaysString, selectedType, customInterval.toIntOrNull())
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp).height(56.dp),
@@ -454,7 +471,7 @@ fun NewReminderModal(
     }
 }
 
-private fun calculateRemainingTime(title: String, dateStr: String, timeStr: String, repetition: String, selectedDays: Set<Int>): String {
+private fun calculateRemainingTime(title: String, dateStr: String, timeStr: String, repetition: String, selectedDays: Set<Int>, customInterval: Int? = null): String {
     return try {
         val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
         val initialDate = sdf.parse("$dateStr $timeStr") ?: return ""
@@ -466,7 +483,7 @@ private fun calculateRemainingTime(title: String, dateStr: String, timeStr: Stri
         // calculamos la PRÓXIMA ocurrencia real.
         if (targetTime <= now.time && repetition != "Sin repetición") {
             val repeatDaysString = if (repetition == "Semanal") selectedDays.joinToString(",") else null
-            targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, repetition, repeatDaysString)
+            targetTime = com.example.remindme.ReminderScheduler.getNextOccurrence(targetTime, repetition, repeatDaysString, customInterval)
         }
         
         var diff = targetTime - now.time

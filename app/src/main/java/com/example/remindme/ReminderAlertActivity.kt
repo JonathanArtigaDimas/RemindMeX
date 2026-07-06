@@ -148,32 +148,7 @@ class ReminderAlertActivity : ComponentActivity() {
             val dao = ReminderDatabase.getDatabase(this@ReminderAlertActivity).reminderDao()
             val existing = dao.getReminderById(id)
             if (existing != null) {
-                val repetition = existing.repetition ?: "Sin repetición"
-                if (repetition != "Sin repetición") {
-                    // Reprogramar para la siguiente ocurrencia
-                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-                    val currentDate = try {
-                        sdf.parse(existing.dateTime)?.time ?: System.currentTimeMillis()
-                    } catch (_: Exception) {
-                        System.currentTimeMillis()
-                    }
-                    val nextTime = ReminderScheduler.getNextOccurrence(currentDate, repetition, existing.repeatDays)
-                    val nextDateTime = sdf.format(Date(nextTime))
-                    
-                    val updated = existing.copy(
-                        dateTime = nextDateTime,
-                        isCompleted = false // Se mantiene ACTIVO para mañana
-                    )
-                    dao.update(updated)
-                    ReminderScheduler.scheduleReminder(
-                        this@ReminderAlertActivity, id, existing.title, 
-                        nextDateTime.split(" ")[0], nextDateTime.split(" ")[1], 
-                        repetition, existing.repeatDays
-                    )
-                } else {
-                    // Si no tiene repetición, se marca como completado normal
-                    dao.update(existing.copy(isCompleted = true))
-                }
+                ReminderScheduler.completeReminderTask(this@ReminderAlertActivity, existing, dao)
             }
         }
     }

@@ -1134,6 +1134,14 @@ fun SharedNoteCard(
     val playingSoundPath by SoundManager.currentSoundPath.collectAsState()
     val isPlaying = playingSoundPath == note.audioPath && note.audioPath != null
     
+    val gson = remember { com.google.gson.Gson() }
+    val imagePaths: List<String> = remember(note.imagePathsJson) {
+        try {
+            val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+            gson.fromJson(note.imagePathsJson, type) ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
     val comments = remember(note.commentsJson) {
         val type = object : TypeToken<List<NoteComment>>() {}.type
         Gson().fromJson<List<NoteComment>>(note.commentsJson, type) ?: emptyList()
@@ -1144,7 +1152,7 @@ fun SharedNoteCard(
     var showChat by remember { mutableStateOf(false) }
     var commentText by remember { mutableStateOf("") }
     var editingCommentId by remember { mutableStateOf<String?>(null) }
-    var showFullscreenImage by remember { mutableStateOf(false) }
+    var showFullscreenImage by remember { mutableStateOf<String?>(null) }
 
     Card(
         modifier = Modifier
@@ -1156,17 +1164,34 @@ fun SharedNoteCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
     ) {
         Column {
-            if (note.imagePath != null) {
-                AsyncImage(
-                    model = note.imagePath,
-                    contentDescription = "Imagen de la nota",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 140.dp)
-                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                        .clickable { showFullscreenImage = true },
-                    contentScale = ContentScale.Crop
-                )
+            if (note.imagePath != null || imagePaths.isNotEmpty()) {
+                val displayImage = note.imagePath ?: imagePaths.firstOrNull()
+                Box {
+                    AsyncImage(
+                        model = displayImage,
+                        contentDescription = "Imagen de la nota",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp)
+                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                            .clickable { showFullscreenImage = displayImage },
+                        contentScale = ContentScale.Crop
+                    )
+                    if (imagePaths.size > 1) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                            color = Color.Black.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "+${imagePaths.size - 1}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             Column(modifier = Modifier.padding(16.dp)) { // More padding
@@ -1465,10 +1490,10 @@ fun SharedNoteCard(
         }
     }
 
-    if (showFullscreenImage && note.imagePath != null) {
+    if (showFullscreenImage != null) {
         com.example.remindme.ui.components.FullscreenImageViewer(
-            imagePath = note.imagePath,
-            onDismiss = { showFullscreenImage = false }
+            imagePath = showFullscreenImage!!,
+            onDismiss = { showFullscreenImage = null }
         )
     }
 }

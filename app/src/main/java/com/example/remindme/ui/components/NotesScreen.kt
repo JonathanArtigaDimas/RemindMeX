@@ -353,6 +353,14 @@ fun NoteCard(
     val context = androidx.compose.ui.platform.LocalContext.current
     val playingSoundPath by SoundManager.currentSoundPath.collectAsState()
     val isPlaying = playingSoundPath == note.audioPath && note.audioPath != null
+    
+    val gson = remember { com.google.gson.Gson() }
+    val imagePaths: List<String> = remember(note.imagePathsJson) {
+        try {
+            val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+            gson.fromJson(note.imagePathsJson, type) ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
@@ -362,13 +370,30 @@ fun NoteCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
     ) {
         Column {
-            if (note.imagePath != null) {
-                AsyncImage(
-                    model = note.imagePath,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
-                    contentScale = ContentScale.Crop
-                )
+            if (note.imagePath != null || imagePaths.isNotEmpty()) {
+                val displayImage = note.imagePath ?: imagePaths.firstOrNull()
+                Box {
+                    AsyncImage(
+                        model = displayImage,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (imagePaths.size > 1) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                            color = Color.Black.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "+${imagePaths.size - 1}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {

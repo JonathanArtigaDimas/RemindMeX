@@ -73,7 +73,8 @@ data class NoteFirestore(
     @set:com.google.firebase.firestore.PropertyName("isPinned")
     var isPinned: Boolean = false,
     val comments: List<NoteComment> = emptyList(),
-    val notebookId: String? = null
+    val notebookId: String? = null,
+    val imagePaths: List<String> = emptyList()
 )
 
 sealed class UiNoteItem {
@@ -113,7 +114,8 @@ fun NoteFirestore.toEntity(): SharedNoteEntity {
         color = color,
         isPinned = isPinned,
         commentsJson = gson.toJson(comments),
-        notebookId = notebookId
+        notebookId = notebookId,
+        imagePathsJson = gson.toJson(imagePaths)
     )
 }
 
@@ -121,6 +123,9 @@ fun SharedNoteEntity.toFirestore(): NoteFirestore {
     val gson = Gson()
     val itemType = object : TypeToken<List<NoteComment>>() {}.type
     val commentsList: List<NoteComment> = gson.fromJson(commentsJson, itemType) ?: emptyList()
+    val pathsType = object : TypeToken<List<String>>() {}.type
+    val imagePathsList: List<String> = gson.fromJson(imagePathsJson, pathsType) ?: emptyList()
+    
     return NoteFirestore(
         noteId = noteId,
         groupId = groupId,
@@ -135,6 +140,7 @@ fun SharedNoteEntity.toFirestore(): NoteFirestore {
         color = color,
         isPinned = isPinned,
         comments = commentsList,
-        notebookId = notebookId
+        notebookId = notebookId,
+        imagePaths = imagePathsList
     )
 }

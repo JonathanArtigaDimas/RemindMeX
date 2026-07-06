@@ -17,5 +17,6 @@ data class Reminder(
     val isCompleted: Boolean = false,
     val type: String = "Recordatorio", // "Recordatorio" o "Alarma"
     val isDeleted: Boolean = false,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val customInterval: Int? = null // Intervalo en minutos para repetición personalizada
 )
